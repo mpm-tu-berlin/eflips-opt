@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "eflips-opt"
+version = "0.1.0"
+description = ""
+authors = ["shuyao <shuyao.guo@tu-berlin.de>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+eflips-model = "^3.0.0"
+sqlalchemy = "^2.0.28"
+pandas = "2.1"
+gamspy = "^0.12.1"
+geoalchemy2 = "^0.14.6"
+shapely = "^2.0.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
