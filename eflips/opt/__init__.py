@@ -1,4 +1,6 @@
 import os
+
+import openrouteservice
 import sqlalchemy
 import random
 from math import sin, cos, acos
@@ -15,7 +17,18 @@ from eflips.model import Depot, Rotation, Trip, Route, Station, VehicleType, Are
 
 
 def distance(p1: Point, p2: Point):
-    return 6371.01 * acos(sin(p1.y) * sin(p2.y) + cos(p1.y) * cos(p2.y) * cos(p1.x - p2.x))
+    base_url = "http://mpm-v-ors.mpm.tu-berlin.de:8080/ors/"
+    client = openrouteservice.Client(base_url=base_url)
+    coords = ((p1.x, p1.y), (p2.x, p2.y))
+
+    routes = client.request(
+        url='v2/directions/driving-car',
+        post_json={
+            'coordinates': coords,
+            'format': 'geojson'
+        })
+
+    return routes["routes"][0]["segments"][0]["distance"] # Using segments instead of summary for 0 distance cases
 
 
 def get_rand_rotation(session, scenario_id, n):
