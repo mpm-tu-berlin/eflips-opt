@@ -14,6 +14,8 @@ from eflips.opt import rotation_data, depot_data, depot_capacity, rotation_vehic
 
 from gamspy import Container, Set, Parameter, Variable, Equation, Model, Sum, Sense
 
+from matplotlib import pyplot as plt
+
 if __name__ == "__main__":
     engine = create_engine(os.environ.get("DATABASE_URL"))
     session = Session(engine)
@@ -41,6 +43,11 @@ if __name__ == "__main__":
 
     cost = cost_rotation_depot(rotation_df, depot_df)
     cost.reset_index()
+
+    orig_assign["cost"] = orig_assign.apply(
+        lambda x: cost.loc[x["rotation_id"], x["depot_id"]], axis=1)
+
+
 
     # Set up gampspy container
     container = Container()
@@ -125,5 +132,14 @@ if __name__ == "__main__":
 
     print(x.records)
     new_assign = x.records.loc[x.records['level'] == 1.0]
+
+    # Plot
+    plt.hist(orig_assign["cost"])
+
+    plt.hist(new_assign["marginal"])
+    plt.legend(["Original", "New"])
+    plt.show()
+
+
 
 
