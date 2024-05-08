@@ -3,7 +3,7 @@ import os
 
 import random
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from geoalchemy2.shape import to_shape
 
@@ -51,10 +51,9 @@ def get_rand_rotation(session, scenario_id, n):
     :param n:
     :return:
     """
-    rotations = session.query(Rotation.id).filter(Rotation.scenario_id == scenario_id).order_by(func.random()).limit(
-        n).all()
-    randidx = random.sample(range(0, len(rotations)), n)
-    rotidx = [rotations[r][0] for r in randidx]
+    rotidx = session.scalars(select(Rotation.id).filter(Rotation.scenario_id == scenario_id).order_by(func.random()).limit(
+        n)).all()
+
     return rotidx
 
 
