@@ -1,14 +1,13 @@
 import os
 
 import pandas as pd
+from eflips.model import Rotation
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
-
+from sqlalchemy import create_engine, select
 
 from eflips.opt.data_preperation import rotation_data, depot_data, depot_capacity, rotation_vehicle_assign, \
     cost_rotation_depot, \
     vehicletype_data, get_rand_rotation, get_deport_rot_assign
-
 
 import pyomo.environ as pyo
 from pyomo.common.timing import report_timing
@@ -19,27 +18,36 @@ if __name__ == "__main__":
     engine = create_engine(os.environ.get("DATABASE_URL"))
     session = Session(engine)
 
-    rotidx = get_rand_rotation(session, 10, 400)
+    # get all rotations
+    rotidx = session.scalars(select(Rotation.id).filter(Rotation.scenario_id == 10)).all()
 
-    orig_assign = get_deport_rot_assign(session, 10, rotidx)
+
+    depot_data = depot_data(session, 10)
+
+    # orig_assign = get_deport_rot_assign(session, 10, rotidx)
+
+    orig_assign = pd.read_csv("orig_assign.csv")
+
 
     # Data preparation
-    # Dummy cost list between depot and rotation
 
-    rotation_df = rotation_data(session, rotidx)
-    depot_df = depot_data(session, 10)
+    rotation_df = pd.read_csv("rotation_df.csv")
+    depot_df = pd.read_csv("depot_df.csv")
+    vt_df = pd.read_csv("vehicle_type.csv")
 
-    capacities = depot_capacity(session, 10)
+    capacities = pd.read_csv("capacities_total.csv")
+    assignment = pd.read_csv("assignment.csv")
+    occupancy = pd.read_csv("occupancy.csv")
+    occupancy.set_index("rotation_id", inplace=True)
 
-    vt_df = vehicletype_data(session, 10)
+    cost = pd.read_csv("cost.csv")
 
-    assignment = rotation_vehicle_assign(session, 10, rotidx)
 
-    cost = cost_rotation_depot(rotation_df, depot_df)
-    cost.reset_index()
 
-    orig_assign["cost"] = orig_assign.apply(
-        lambda x: cost.loc[x["rotation_id"], x["depot_id"]], axis=1)
+
+
+
+    print("data prepared")
 
     # Building model in pyomo
     # i for rotations
@@ -47,16 +55,29 @@ if __name__ == "__main__":
     # j for depots
     J = depot_df["depot_id"].tolist()
     # t for vehicle types
-    T = vt_df.index.tolist()
+    T = vt_df["vehicle_type_id"].tolist()
+    # s for time slots
+    S = occupancy.columns.tolist()
+    S = [int(i) for i in S]
+
+
 
     # n_jt: depot-vehicle type capacity
-    n = capacities.to_dict()["capacity"]
+    n = capacities.set_index("depot_id").to_dict()["capacity"]
 
-    # v_it: rotation-type assignment
+    # v_it: rotation-type
     v = assignment.set_index(["rotation_id", "vehicle_type_id"]).to_dict()["assignment"]
 
     # c_ij: rotation-depot cost
-    c = cost.to_dict()["cost"]
+    c = cost.set_index(["rotation_id", "depot_id"]).to_dict()["distance"]
+
+    # o_si: rotation-time slot occupancy
+    o = occupancy.to_dict()
+    o = {int(k): v for k, v in o.items()}
+
+    # f_t: vehicle type factor
+    f = vt_df.set_index("vehicle_type_id").to_dict()["factor"]
+
 
     print("data acquired")
 
@@ -82,9 +103,9 @@ if __name__ == "__main__":
 
 
     # Depot capacity constraint
-    @model.Constraint(J, T)
-    def depot_capacity_constraint(m, j, t):
-        return sum(v[i, t] * model.x[i, j] for i in I) <= n[j, t]
+    @model.Constraint(J, S)
+    def depot_capacity_constraint(m, j, s):
+        return sum(sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[t] for t in T) <= n[j]
 
 
     # Solve
@@ -99,7 +120,16 @@ if __name__ == "__main__":
                                "depot_id": [i[1] for i in model.x if model.x[i].value == 1.0],
                                "assignment": [model.x[i].value for i in model.x if model.x[i].value == 1.0]})
 
-    new_assign["cost"] = new_assign.apply(lambda x: cost.loc[x["rotation_id"], x["depot_id"]], axis=1)
+    cost.set_index(["rotation_id", "depot_id"], inplace=True)
+
+    new_assign["cost"] = new_assign.apply(lambda x: cost.loc[x["rotation_id"], x["depot_id"]]["distance"], axis=1)
+    orig_assign["cost"] = orig_assign.apply(lambda x: cost.loc[x["rotation_id"], x["depot_id"]]["distance"], axis=1)
+
+    # Save results
+
+    new_assign.to_csv("new_assign.csv")
+
+
 
     # Plotting
     orig_cost = orig_assign["cost"]
@@ -118,4 +148,4 @@ if __name__ == "__main__":
     plt.text(new_cost_mean * 1.1, max_ylim * 0.1, 'New_Mean: {:.2f}'.format(new_cost_mean))
 
     plt.show()
-
+    plt.savefig("cost_comparison_distance.png")
