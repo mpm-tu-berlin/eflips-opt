@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import openrouteservice
 import os
 import math
@@ -33,9 +35,8 @@ from eflips.model import (
 
 
 def deadhead_cost(
-    p1: Point,
-    p2: Point,
-    cost="distance",
+    p1: Tuple[float, float],
+    p2: Tuple[float, float],
     profile="driving-car",
     service="directions",
     data_format="geojson",
@@ -51,20 +52,21 @@ def deadhead_cost(
     :param data_format: Data format to use, default is geojson
     """
 
+
     base_url = os.environ["BASE_URL"]
     new_url = os.path.join("v2", service, profile)
     if base_url is None:
         raise ValueError("BASE_URL is not set")
 
     client = openrouteservice.Client(base_url=base_url)
-    coords = ((p1.x, p1.y), (p2.x, p2.y))
+    coords = (p1, p2)
 
     routes = client.request(
         url=new_url, post_json={"coordinates": coords, "format": data_format}
     )
 
     return routes["routes"][0]["segments"][0][
-        cost
+        "distance"
     ]  # Using segments instead of summary for 0 distance cases
 
 
@@ -110,63 +112,69 @@ def get_deport_rot_assign(session, scenario_id, rotidx):
     return pd.DataFrame(data, columns=["rotation_id", "depot_id"])
 
 
-def rotation_data(session, randidx) -> pd.DataFrame:
+def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
     """
+    This function takes a :class:'sqlalchemy.orm.Session' object and scenario_id and returns the rotation data in a
+    :class:'pandas.DataFrame' object
 
-
-    :param session:
-    :param scenario_id:
-    :return:
+    :param session: a :class:'sqlalchemy.orm.Session' object connected to the database
+    :param scenario_id: The scenario id of the current scenario
+    :return: a :class:'pandas.DataFrame' object with the rotation data, which includes the following columns:
+        - rotation_id: The id of the rotation
+        - start_station_coord: The coordinates of the first non-depot station of the rotation
+        - end_station_coord: The coordinates of the last non-depot station of the rotation
+        - vehicle_type_id: The id of the vehicle type of the rotation
     """
     # get non depot start and end station for each rotation
 
-    rot_start_end = []
+    rot_info_for_df = []
 
-    # rotations = session.query(Rotation.id).filter(Rotation.scenario_id == scenario_id).all()
-    for rotation in randidx:
+    rotations = session.scalars(session.query(Rotation).filter(Rotation.scenario_id == scenario_id)).all()
+    for rotation in rotations:
         trips = (
             session.query(Trip.id)
-            .filter(Trip.rotation_id == rotation)
+            .filter(Trip.rotation_id == rotation.id)
             .order_by(Trip.departure_time)
             .all()
         )
 
         # Find the first and last non-depot station for each rotation
+        # Here, the old deadhead trips are already deleted. So the start and end station are excluding the depots
         # TODO potential optimization?
-        first_non_depot_station = (
-            session.query(Station.id, Station.geom)
-            .join(Route, Station.id == Route.arrival_station_id)
-            .join(Trip, Trip.route_id == Route.id)
-            .filter(Trip.id == trips[0][0])
-            .one()
-        )
-
-        last_non_depot_station = (
-            session.query(Station.id, Station.geom)
+        start_station = (
+            session.query(Station.geom)
             .join(Route, Station.id == Route.departure_station_id)
             .join(Trip, Trip.route_id == Route.id)
-            .filter(Trip.id == trips[-1][0])
-            .one()
+            .filter(Trip.id == trips[0][0])
+            .one()[0]
         )
 
-        rot_start_end.append(
+        end_station = (
+            session.query(Station.geom)
+            .join(Route, Station.id == Route.arrival_station_id)
+            .join(Trip, Trip.route_id == Route.id)
+            .filter(Trip.id == trips[-1][0])
+            .one()[0]
+        )
+        start_station_point = to_shape(start_station)
+        end_station_point = to_shape(end_station)
+
+        rot_info_for_df.append(
             [
-                rotation,
-                first_non_depot_station[0],
-                to_shape(first_non_depot_station[1]),
-                last_non_depot_station[0],
-                to_shape(last_non_depot_station[1]),
+                rotation.id,
+                (start_station_point.x, start_station_point.y),
+                (end_station_point.x, end_station_point.y),
+                rotation.vehicle_type_id,
             ]
         )
 
     rotation_df = pd.DataFrame(
-        rot_start_end,
+        rot_info_for_df,
         columns=[
             "rotation_id",
-            "first_non_depot_station_id",
-            "first_non_depot_station_coord",
-            "last_non_depot_station_id",
-            "last_non_depot_station_coord",
+            "start_station_coord",
+            "end_station_coord",
+            "vehicle_type_id",
         ],
     )
     return rotation_df
@@ -236,23 +244,29 @@ def depot_capacity(session, scenario_id):
     ).set_index(["depot_id", "vehicle_type_id"])
 
 
-def vehicletype_data(session, scenario_id):
+def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     """
-
-    :param session:
-    :param scenario_id:
-    :return:
+    This function takes the session and scenario_id and returns the vehicle types and there size factors compared to a
+    normal 12-meter bus
+    :param standard_bus_length: The capacity of the depot is calculated based on the size of a standard bus. Default is 12.0.
+    :param session: A :class:'sqlalchemy.orm.Session' object connected to the database
+    :param scenario_id: The scenario id of the current scenario
+    :return: A :class:'pandas.DataFrame' object including the following columns:
+        - vehicle_type_id: The id of the vehicle type
+        - size_factor: The size factor of the vehicle type compared to a standard 12-meter bus
     """
 
     vehicle_types = (
-        session.query(VehicleType.id)
+        session.query(VehicleType)
         .filter(VehicleType.scenario_id == scenario_id)
         .all()
     )
-    vt_df = pd.DataFrame(
-        [v[0] for v in vehicle_types], columns=["vehicle_type_id"]
-    ).set_index("vehicle_type_id")
+    vehicle_types_id = [v.id for v in vehicle_types]
+    vehicle_types_size = [v.length / standard_bus_length if (v.length is not None) else 1.0 for v in vehicle_types]
 
+    vt_df = pd.DataFrame()
+    vt_df["vehicle_type_id"] = vehicle_types_id
+    vt_df["size_factor"] = vehicle_types_size
     return vt_df
 
 
@@ -290,7 +304,7 @@ def rotation_vehicle_assign(session, scenario_id, rotidx):
 
 
 def cost_rotation_depot(rotation_data: pd.DataFrame, depot_data: pd.DataFrame):
-    # TODO: make cost a callable
+
     """
 
     :param rotation_data:
@@ -329,34 +343,44 @@ def cost_rotation_depot(rotation_data: pd.DataFrame, depot_data: pd.DataFrame):
 def get_occupancy(
     session: Session,
     scenario_id: int,
-    rotation_id: list[int],
     time_window=timedelta(minutes=40),
-):
+) -> pd.DataFrame:
     """
-    Get the occupancy of the rotation
-    :param session:
-    :param scenario_id:
-    :param rotation_id:
-    :return:
+    Evaluate the occupancy over time of all the rotations with the time resolution given in :param time_window:. This
+    helps to evaluate the minimum fleet size for serving the amount of rotations.
+
+    :param session: a :class:'sqlalchemy.orm.Session' object connected to the database :param scenario_id: The
+    scenario id of the current scenario :param time_window: The time resolution to evaluate the occupancy. Default is
+    40 minutes, which is the length of the minimum rotation out of the rotations in the current database. It is also
+    recommended to use the minimum rotation length from user's database as the time window.
+
+    :return: a :class:'pandas.DataFrame' object with the occupancy data, which includes the following columns: -
+    rotation_id: The id of the rotation - time slots in the unit of seconds after the simulation start: The time
+    stamp of the occupancy, with 1 meaning this time slot is occupied and 0 vice versa.
+
     """
+
+    rotations = session.scalars(session.query(Rotation.id).filter(Rotation.scenario_id == scenario_id)).all()
     start_and_end_time = (
         session.query(func.min(Trip.departure_time), func.max(Trip.arrival_time))
-        .filter(Trip.scenario_id == scenario_id, Trip.rotation_id.in_(rotation_id))
+        .filter(Trip.scenario_id == scenario_id, Trip.rotation_id.in_(rotations))
         .one()
     )
     start_time = start_and_end_time[0].timestamp()
     end_time = start_and_end_time[1].timestamp()
 
-    rotations = session.query(Rotation).filter(Rotation.id.in_(rotation_id)).all()
     sampled_time_stamp = np.arange(
         start_time, end_time, time_window.total_seconds(), dtype=int
     )
     occupancy = np.zeros((len(rotations), len(sampled_time_stamp)), dtype=int)
 
-    for idx, rotation in enumerate(rotations):
+    for idx, rotation_id in enumerate(rotations):
+        # TODO now since the deadhead trips are deleted, this occupancy does take that into account. We'll keep it
+        #  here and see how does it affect the results. Normally the deadhead trips last only several minutes which (
+        #  hopefully) could be ignored.
+        rotation_start = session.query(func.min(Trip.departure_time).filter(Trip.rotation_id == rotation_id)).one()[0].timestamp()
+        rotation_end = session.query(func.max(Trip.arrival_time).filter(Trip.rotation_id == rotation_id)).one()[0].timestamp()
 
-        rotation_start = rotation.trips[0].departure_time.timestamp()
-        rotation_end = rotation.trips[-1].arrival_time.timestamp()
         occupancy[idx] = np.interp(
             sampled_time_stamp,
             [rotation_start, rotation_end],
@@ -364,7 +388,7 @@ def get_occupancy(
             left=0,
             right=0,
         )
-    occupancy = pd.DataFrame(occupancy, columns=[sampled_time_stamp], index=rotation_id)
+    occupancy = pd.DataFrame(occupancy, columns=[sampled_time_stamp], index=rotations)
     return occupancy
 
 
@@ -375,7 +399,7 @@ def update_deadhead_trip(session: Session, new_assign: pd.DataFrame):
     :param new_assign:
     :return:
     """
-
+    # TODO delete the event table and give warnings
     for idx, row in new_assign.iterrows():
         # Create new route with the new depot
 

@@ -102,48 +102,48 @@ class TestHelpers:
 
         stop_1 = Station(
             scenario=scenario,
-            name="Test Station 1",
-            name_short="TS1",
-            geom="POINT(0 0 0)",
+            name="Hertzallee",
+            name_short="HA",
+            geom="POINT(13.332105437227769 52.50929116968019 0)",
             is_electrified=False,
         )
         session.add(stop_1)
 
         stop_2 = Station(
             scenario=scenario,
-            name="Test Station 2",
-            name_short="TS2",
-            geom="POINT(1 0 0)",
+            name="Ernst Reuter Platz",
+            name_short="ERP",
+            geom="POINT(13.32280013838422 52.5116502402821 0)",
             is_electrified=False,
         )
         session.add(stop_2)
 
         stop_3 = Station(
             scenario=scenario,
-            name="Test Station 3",
-            name_short="TS3",
-            geom="POINT(2 0 0)",
+            name="Adenauer Platz",
+            name_short="AP",
+            geom="POINT(13.308215181759383 52.49999600735662 0)",
             is_electrified=False,
         )
 
         route_1 = Route(
             scenario=scenario,
-            name="Test Route 1",
-            name_short="TR1",
+            name="Forward Route",
+            name_short="FR",
             departure_station=stop_1,
             arrival_station=stop_3,
             line=line,
-            distance=1000,
+            distance=3900,
         )
         assocs = [
             AssocRouteStation(
                 scenario=scenario, station=stop_1, route=route_1, elapsed_distance=0
             ),
             AssocRouteStation(
-                scenario=scenario, station=stop_2, route=route_1, elapsed_distance=500
+                scenario=scenario, station=stop_2, route=route_1, elapsed_distance=1000
             ),
             AssocRouteStation(
-                scenario=scenario, station=stop_3, route=route_1, elapsed_distance=1000
+                scenario=scenario, station=stop_3, route=route_1, elapsed_distance=3900
             ),
         ]
         route_1.assoc_route_stations = assocs
@@ -151,22 +151,22 @@ class TestHelpers:
 
         route_2 = Route(
             scenario=scenario,
-            name="Test Route 2",
-            name_short="TR2",
+            name="Backward Route",
+            name_short="BR",
             departure_station=stop_3,
             arrival_station=stop_1,
             line=line,
-            distance=1000,
+            distance=3900,
         )
         assocs = [
             AssocRouteStation(
                 scenario=scenario, station=stop_3, route=route_2, elapsed_distance=0
             ),
             AssocRouteStation(
-                scenario=scenario, station=stop_2, route=route_2, elapsed_distance=100
+                scenario=scenario, station=stop_2, route=route_2, elapsed_distance=2900
             ),
             AssocRouteStation(
-                scenario=scenario, station=stop_1, route=route_2, elapsed_distance=1000
+                scenario=scenario, station=stop_1, route=route_2, elapsed_distance=3900
             ),
         ]
         route_2.assoc_route_stations = assocs
@@ -176,8 +176,8 @@ class TestHelpers:
         first_departure = datetime(
             year=2020, month=1, day=1, hour=12, minute=0, second=0, tzinfo=timezone.utc
         )
-        interval = timedelta(minutes=30)
-        duration = timedelta(minutes=20)
+        interval = timedelta(minutes=10)
+        duration = timedelta(minutes=15)
 
         # Create a number of rotations
         number_of_rotations = 3
@@ -281,7 +281,7 @@ class TestHelpers:
 
         depot.default_plan = plan
 
-        # Create areas
+        # Create area
         arrival_area = Area(
             scenario=scenario,
             name="Arrival",
@@ -400,6 +400,76 @@ class TestDepotRotationOptimizer(TestHelpers):
 
     def test_delete_original_data(self, session, full_scenario, optimizer):
         optimizer.delete_original_data()
+        session.commit()
 
         assert session.query(Trip).filter(Trip.scenario_id == full_scenario.id,
                                           Trip.trip_type == TripType.EMPTY).count() == 0
+
+    def test_get_depot_from_input(self, session, full_scenario, optimizer):
+        # Giving station id
+        user_input = [
+            {
+                "depot_station": 1,
+                "capacity": 10,
+                "vehicle_type": [1, 2]
+            },
+            {
+                "depot_station": 100,
+                "capacity": 10,
+                "vehicle_type": [1, 2]
+            },
+            {
+                "depot_station": (13.323828521189995, 52.517102453684146),
+                "capacity": 10,
+                "vehicle_type": [1, 2]
+            },
+            {
+                "depot_station": 1,
+                "capacity": 10,
+                "vehicle_type": []
+            },
+            {
+                "depot_station": 1,
+                "capacity": 10,
+                "vehicle_type": [100, 200]
+            },
+            {
+                "depot_station": 1,
+                "capacity": 10.5,
+                "vehicle_type": [1, 2]
+            }
+        ]
+        with pytest.raises(AssertionError):
+            optimizer.get_depot_from_input(user_input)
+
+    def test_data_preparation(self, session, full_scenario, optimizer):
+        user_input_depot = [
+            {
+                "depot_station": 1,
+                "capacity": 10,
+                "vehicle_type": [1]
+            },
+            {
+                "depot_station": (13.331493462156047, 52.50356808223075),
+                "capacity": 10,
+                "vehicle_type": [2]
+            }
+
+        ]
+
+        optimizer.delete_original_data()
+        optimizer.get_depot_from_input(user_input_depot)
+        optimizer.data_preparation()
+
+        assert optimizer.data["depot"] is not None
+        assert optimizer.data["vehicletype_depot"] is not None
+        assert optimizer.data["vehicle_type"] is not None
+        assert optimizer.data["rotation"] is not None
+        assert optimizer.data["occupancy"] is not None
+
+
+
+
+
+
+
