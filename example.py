@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
             optimizer.get_depot_from_input(user_input_depot)
             optimizer.data_preparation()
-            for k, v in optimizer.data:
+            for k, v in optimizer.data.items():
                 v.to_csv(f"{k}.csv", index=False)
         else:
             optimizer.data = {
