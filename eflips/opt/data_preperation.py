@@ -52,7 +52,6 @@ def deadhead_cost(
     :param data_format: Data format to use, default is geojson
     """
 
-
     base_url = os.environ["BASE_URL"]
     new_url = os.path.join("v2", service, profile)
     if base_url is None:
@@ -65,9 +64,10 @@ def deadhead_cost(
         url=new_url, post_json={"coordinates": coords, "format": data_format}
     )
 
-    return routes["routes"][0]["segments"][0][
-        "distance"
-    ]  # Using segments instead of summary for 0 distance cases
+    return {
+        "distance": routes["routes"][0]["segments"][0]["distance"],
+        "duration": routes["routes"][0]["segments"][0]["duration"],
+    }  # Using segments instead of summary for 0 distance cases
 
 
 def get_rand_rotation(session, scenario_id, n):
@@ -129,7 +129,9 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
 
     rot_info_for_df = []
 
-    rotations = session.scalars(session.query(Rotation).filter(Rotation.scenario_id == scenario_id)).all()
+    rotations = session.scalars(
+        session.query(Rotation).filter(Rotation.scenario_id == scenario_id)
+    ).all()
     for rotation in rotations:
         trips = (
             session.query(Trip.id)
@@ -257,12 +259,13 @@ def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     """
 
     vehicle_types = (
-        session.query(VehicleType)
-        .filter(VehicleType.scenario_id == scenario_id)
-        .all()
+        session.query(VehicleType).filter(VehicleType.scenario_id == scenario_id).all()
     )
     vehicle_types_id = [v.id for v in vehicle_types]
-    vehicle_types_size = [v.length / standard_bus_length if (v.length is not None) else 1.0 for v in vehicle_types]
+    vehicle_types_size = [
+        v.length / standard_bus_length if (v.length is not None) else 1.0
+        for v in vehicle_types
+    ]
 
     vt_df = pd.DataFrame()
     vt_df["vehicle_type_id"] = vehicle_types_id
@@ -304,7 +307,6 @@ def rotation_vehicle_assign(session, scenario_id, rotidx):
 
 
 def cost_rotation_depot(rotation_data: pd.DataFrame, depot_data: pd.DataFrame):
-
     """
 
     :param rotation_data:
@@ -360,7 +362,9 @@ def get_occupancy(
 
     """
 
-    rotations = session.scalars(session.query(Rotation.id).filter(Rotation.scenario_id == scenario_id)).all()
+    rotations = session.scalars(
+        session.query(Rotation.id).filter(Rotation.scenario_id == scenario_id)
+    ).all()
     start_and_end_time = (
         session.query(func.min(Trip.departure_time), func.max(Trip.arrival_time))
         .filter(Trip.scenario_id == scenario_id, Trip.rotation_id.in_(rotations))
@@ -378,8 +382,20 @@ def get_occupancy(
         # TODO now since the deadhead trips are deleted, this occupancy does take that into account. We'll keep it
         #  here and see how does it affect the results. Normally the deadhead trips last only several minutes which (
         #  hopefully) could be ignored.
-        rotation_start = session.query(func.min(Trip.departure_time).filter(Trip.rotation_id == rotation_id)).one()[0].timestamp()
-        rotation_end = session.query(func.max(Trip.arrival_time).filter(Trip.rotation_id == rotation_id)).one()[0].timestamp()
+        rotation_start = (
+            session.query(
+                func.min(Trip.departure_time).filter(Trip.rotation_id == rotation_id)
+            )
+            .one()[0]
+            .timestamp()
+        )
+        rotation_end = (
+            session.query(
+                func.max(Trip.arrival_time).filter(Trip.rotation_id == rotation_id)
+            )
+            .one()[0]
+            .timestamp()
+        )
 
         occupancy[idx] = np.interp(
             sampled_time_stamp,
@@ -388,7 +404,7 @@ def get_occupancy(
             left=0,
             right=0,
         )
-    occupancy = pd.DataFrame(occupancy, columns=[sampled_time_stamp], index=rotations)
+    occupancy = pd.DataFrame(occupancy, columns=sampled_time_stamp, index=rotations)
     return occupancy
 
 

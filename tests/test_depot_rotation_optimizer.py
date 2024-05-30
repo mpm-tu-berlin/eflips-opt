@@ -29,6 +29,7 @@ from eflips.model import (
 )
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from eflips.opt.depot_rotation_optimizer import DepotRotationOptimizer
 
@@ -102,9 +103,9 @@ class TestHelpers:
 
         stop_1 = Station(
             scenario=scenario,
-            name="Hertzallee",
-            name_short="HA",
-            geom="POINT(13.332105437227769 52.50929116968019 0)",
+            name="Tiergarten",
+            name_short="TA",
+            geom="POINT(13.335799579256504 52.514000247127576 0)",
             is_electrified=False,
         )
         session.add(stop_1)
@@ -216,8 +217,8 @@ class TestHelpers:
                         scenario=scenario,
                         station=stop_2,
                         arrival_time=first_departure
-                                     + 2 * i * interval
-                                     + timedelta(minutes=5),
+                        + 2 * i * interval
+                        + timedelta(minutes=5),
                         dwell_duration=timedelta(minutes=1),
                     ),
                     StopTime(
@@ -236,8 +237,8 @@ class TestHelpers:
                         trip_type=TripType.PASSENGER if i < 14 else TripType.EMPTY,
                         departure_time=first_departure + (2 * i + 1) * interval,
                         arrival_time=first_departure
-                                     + (2 * i + 1) * interval
-                                     + duration,
+                        + (2 * i + 1) * interval
+                        + duration,
                         rotation=rotation,
                     )
                 )
@@ -251,15 +252,15 @@ class TestHelpers:
                         scenario=scenario,
                         station=stop_2,
                         arrival_time=first_departure
-                                     + (2 * i + 1) * interval
-                                     + timedelta(minutes=5),
+                        + (2 * i + 1) * interval
+                        + timedelta(minutes=5),
                     ),
                     StopTime(
                         scenario=scenario,
                         station=stop_1,
                         arrival_time=first_departure
-                                     + (2 * i + 1) * interval
-                                     + duration,
+                        + (2 * i + 1) * interval
+                        + duration,
                     ),
                 ]
                 trips[-1].stop_times = stop_times
@@ -402,59 +403,40 @@ class TestDepotRotationOptimizer(TestHelpers):
         optimizer.delete_original_data()
         session.commit()
 
-        assert session.query(Trip).filter(Trip.scenario_id == full_scenario.id,
-                                          Trip.trip_type == TripType.EMPTY).count() == 0
+        assert (
+            session.query(Trip)
+            .filter(
+                Trip.scenario_id == full_scenario.id, Trip.trip_type == TripType.EMPTY
+            )
+            .count()
+            == 0
+        )
 
     def test_get_depot_from_input(self, session, full_scenario, optimizer):
         # Giving station id
         user_input = [
-            {
-                "depot_station": 1,
-                "capacity": 10,
-                "vehicle_type": [1, 2]
-            },
-            {
-                "depot_station": 100,
-                "capacity": 10,
-                "vehicle_type": [1, 2]
-            },
+            {"depot_station": 1, "capacity": 10, "vehicle_type": [1, 2]},
+            {"depot_station": 100, "capacity": 10, "vehicle_type": [1, 2]},
             {
                 "depot_station": (13.323828521189995, 52.517102453684146),
                 "capacity": 10,
-                "vehicle_type": [1, 2]
+                "vehicle_type": [1, 2],
             },
-            {
-                "depot_station": 1,
-                "capacity": 10,
-                "vehicle_type": []
-            },
-            {
-                "depot_station": 1,
-                "capacity": 10,
-                "vehicle_type": [100, 200]
-            },
-            {
-                "depot_station": 1,
-                "capacity": 10.5,
-                "vehicle_type": [1, 2]
-            }
+            {"depot_station": 1, "capacity": 10, "vehicle_type": []},
+            {"depot_station": 1, "capacity": 10, "vehicle_type": [100, 200]},
+            {"depot_station": 1, "capacity": 10.5, "vehicle_type": [1, 2]},
         ]
         with pytest.raises(AssertionError):
             optimizer.get_depot_from_input(user_input)
 
     def test_data_preparation(self, session, full_scenario, optimizer):
         user_input_depot = [
-            {
-                "depot_station": 1,
-                "capacity": 10,
-                "vehicle_type": [1]
-            },
+            {"depot_station": 1, "capacity": 10, "vehicle_type": [1]},
             {
                 "depot_station": (13.331493462156047, 52.50356808223075),
                 "capacity": 10,
-                "vehicle_type": [2]
-            }
-
+                "vehicle_type": [2],
+            },
         ]
 
         optimizer.delete_original_data()
@@ -462,14 +444,46 @@ class TestDepotRotationOptimizer(TestHelpers):
         optimizer.data_preparation()
 
         assert optimizer.data["depot"] is not None
+        assert optimizer.data["depot"].shape[0] == len(user_input_depot)
         assert optimizer.data["vehicletype_depot"] is not None
+        assert optimizer.data["vehicletype_depot"].shape == (
+            session.query(func.count(VehicleType.id)).scalar(),
+            len(user_input_depot),
+        )
+
         assert optimizer.data["vehicle_type"] is not None
+        assert (
+            optimizer.data["vehicle_type"].shape[0]
+            == session.query(func.count(VehicleType.id)).scalar()
+        )
         assert optimizer.data["rotation"] is not None
+        assert (
+            optimizer.data["rotation"].shape[0]
+            == session.query(func.count(Rotation.id)).scalar()
+        )
         assert optimizer.data["occupancy"] is not None
+        assert (
+            optimizer.data["occupancy"].shape[0]
+            == session.query(func.count(Rotation.id)).scalar()
+        )
+        assert optimizer.data["cost"] is not None
+        assert optimizer.data["cost"].shape[0] == (
+            session.query(func.count(Rotation.id)).scalar() * len(user_input_depot)
+        )
 
+    def test_optimize(self, session, full_scenario, optimizer):
+        user_input_depot = [
+            {"depot_station": 1, "capacity": 10, "vehicle_type": [1]},
+            {
+                "depot_station": (13.332105437227769, 52.50929116968019),  # Hertzallee
+                "capacity": 10,
+                "vehicle_type": [2],
+            },
+        ]
 
+        optimizer.delete_original_data()
+        optimizer.get_depot_from_input(user_input_depot)
+        optimizer.data_preparation()
+        optimizer.optimize()
 
-
-
-
-
+        assert optimizer.data["result"] is not None
