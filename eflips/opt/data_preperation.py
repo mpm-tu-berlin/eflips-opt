@@ -37,6 +37,7 @@ from eflips.model import (
 def deadhead_cost(
     p1: Tuple[float, float],
     p2: Tuple[float, float],
+    client,
     profile="driving-car",
     service="directions",
     data_format="geojson",
@@ -57,7 +58,7 @@ def deadhead_cost(
     if base_url is None:
         raise ValueError("BASE_URL is not set")
 
-    client = openrouteservice.Client(base_url=base_url)
+    # client = openrouteservice.Client(base_url=base_url)
     coords = (p1, p2)
 
     routes = client.request(
@@ -166,7 +167,6 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
                 rotation.id,
                 (start_station_point.x, start_station_point.y),
                 (end_station_point.x, end_station_point.y),
-                rotation.vehicle_type_id,
             ]
         )
 
@@ -176,7 +176,6 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
             "rotation_id",
             "start_station_coord",
             "end_station_coord",
-            "vehicle_type_id",
         ],
     )
     return rotation_df
@@ -273,7 +272,7 @@ def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     return vt_df
 
 
-def rotation_vehicle_assign(session, scenario_id, rotidx):
+def get_rotation_vehicle_assign(session, scenario_id):
     """
 
     :param session:
@@ -281,24 +280,21 @@ def rotation_vehicle_assign(session, scenario_id, rotidx):
     :return:
     """
 
-    # rotations = session.query(Rotation.id, Rotation.vehicle_type_id).filter(Rotation.scenario_id == scenario_id).all()
+    rotations = session.query(Rotation.id, Rotation.vehicle_type_id).filter(Rotation.scenario_id == scenario_id).all()
     vehicle_types = (
         session.query(VehicleType.id)
         .filter(VehicleType.scenario_id == scenario_id)
         .all()
     )
 
+
     assignment = []
 
-    for rotation in rotidx:
+    for rotation in rotations:
         for vehicle_type in vehicle_types:
-            r_vid = (
-                session.query(Rotation.vehicle_type_id)
-                .filter(Rotation.id == rotation)
-                .one()[0]
-            )
+            r_vid = rotation[1]
             assignment.append(
-                [rotation, vehicle_type[0], 1 if r_vid == vehicle_type[0] else 0]
+                [rotation[0], vehicle_type[0], 1 if r_vid == vehicle_type[0] else 0]
             )
 
     return pd.DataFrame(
@@ -345,16 +341,14 @@ def cost_rotation_depot(rotation_data: pd.DataFrame, depot_data: pd.DataFrame):
 def get_occupancy(
     session: Session,
     scenario_id: int,
-    time_window=timedelta(minutes=40),
 ) -> pd.DataFrame:
     """
     Evaluate the occupancy over time of all the rotations with the time resolution given in :param time_window:. This
     helps to evaluate the minimum fleet size for serving the amount of rotations.
 
-    :param session: a :class:'sqlalchemy.orm.Session' object connected to the database :param scenario_id: The
-    scenario id of the current scenario :param time_window: The time resolution to evaluate the occupancy. Default is
-    40 minutes, which is the length of the minimum rotation out of the rotations in the current database. It is also
-    recommended to use the minimum rotation length from user's database as the time window.
+    :param session: a :class:'sqlalchemy.orm.Session' object connected to the database
+    :param scenario_id: The scenario id of the current scenario
+
 
     :return: a :class:'pandas.DataFrame' object with the occupancy data, which includes the following columns: -
     rotation_id: The id of the rotation - time slots in the unit of seconds after the simulation start: The time
@@ -362,23 +356,39 @@ def get_occupancy(
 
     """
 
-    rotations = session.scalars(
-        session.query(Rotation.id).filter(Rotation.scenario_id == scenario_id)
-    ).all()
+
+
+    # Get the shortest rotation duration as time window
+
+
+
+    rotations = session.query(Rotation).filter(Rotation.scenario_id == scenario_id).all()
+    rotation_ids = [r.id for r in rotations]
+
+    min_duration = 0
+    for rotation in rotations:
+        first_trip = rotation.trips[0]
+        last_trip = rotation.trips[-1]
+        duration = last_trip.arrival_time - first_trip.departure_time
+        if min_duration == 0 or duration < min_duration:
+            min_duration = duration
+
+    time_window = min_duration.seconds
+
     start_and_end_time = (
         session.query(func.min(Trip.departure_time), func.max(Trip.arrival_time))
-        .filter(Trip.scenario_id == scenario_id, Trip.rotation_id.in_(rotations))
+        .filter(Trip.scenario_id == scenario_id, Trip.rotation_id.in_(rotation_ids))
         .one()
     )
     start_time = start_and_end_time[0].timestamp()
     end_time = start_and_end_time[1].timestamp()
 
     sampled_time_stamp = np.arange(
-        start_time, end_time, time_window.total_seconds(), dtype=int
+        start_time, end_time, time_window, dtype=int
     )
     occupancy = np.zeros((len(rotations), len(sampled_time_stamp)), dtype=int)
 
-    for idx, rotation_id in enumerate(rotations):
+    for idx, rotation_id in enumerate(rotation_ids):
         # TODO now since the deadhead trips are deleted, this occupancy does take that into account. We'll keep it
         #  here and see how does it affect the results. Normally the deadhead trips last only several minutes which (
         #  hopefully) could be ignored.
@@ -404,7 +414,11 @@ def get_occupancy(
             left=0,
             right=0,
         )
-    occupancy = pd.DataFrame(occupancy, columns=sampled_time_stamp, index=rotations)
+
+        assert sum(occupancy[idx]) != 0, (f"Rotation {rotation_id} has no occupancy over this time period. Please "
+                                          f"check if the time window is too large.")
+
+    occupancy = pd.DataFrame(occupancy, columns=sampled_time_stamp, index=rotation_ids)
     return occupancy
 
 

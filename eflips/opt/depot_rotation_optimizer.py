@@ -1,3 +1,6 @@
+import os
+import openrouteservice
+
 from typing import Dict, Any, List
 from geoalchemy2.shape import to_shape
 import pandas as pd
@@ -8,11 +11,13 @@ from pyomo.common.timing import report_timing
 from matplotlib import pyplot as plt
 
 from eflips.model import Rotation, Trip, TripType, Depot, Station, Route, VehicleType
+from pyomo.core import Param, Constraint
+
 from eflips.opt.data_preperation import (
     get_vehicletype,
     get_rotation,
     get_occupancy,
-    deadhead_cost,
+    deadhead_cost, get_rotation_vehicle_assign,
 )
 
 
@@ -59,26 +64,26 @@ class DepotRotationOptimizer:
             # - Meanwhile, delete the stoptimes of the trip
 
             if (
-                first_trip is not None
-                and first_trip.trip_type == TripType.EMPTY
-                and self.session.query(Depot.station_id)
-                .join(Station, Station.id == Depot.station_id)
-                .join(Route, Route.departure_station_id == Station.id)
-                .filter(Route.id == first_trip.route_id)
-                .first()
-                is not None
+                    first_trip is not None
+                    and first_trip.trip_type == TripType.EMPTY
+                    and self.session.query(Depot.station_id)
+                    .join(Station, Station.id == Depot.station_id)
+                    .join(Route, Route.departure_station_id == Station.id)
+                    .filter(Route.id == first_trip.route_id)
+                    .first()
+                    is not None
             ):
                 trips_to_delete.append(first_trip)
                 stoptimes_to_delete.extend(first_trip.stop_times)
 
             if (
-                last_trip is not None
-                and last_trip.trip_type == TripType.EMPTY
-                and self.session.query(Depot.station_id)
-                .join(Station, Station.id == Depot.station_id)
-                .join(Route, Route.arrival_station_id == Station.id)
-                .filter(Route.id == last_trip.route_id)
-                .first()
+                    last_trip is not None
+                    and last_trip.trip_type == TripType.EMPTY
+                    and self.session.query(Depot.station_id)
+                    .join(Station, Station.id == Depot.station_id)
+                    .join(Route, Route.arrival_station_id == Station.id)
+                    .filter(Route.id == last_trip.route_id)
+                    .first()
             ):
                 trips_to_delete.append(last_trip)
                 stoptimes_to_delete.extend(last_trip.stop_times)
@@ -117,8 +122,8 @@ class DepotRotationOptimizer:
             station = depot["depot_station"]
             if isinstance(station, int):
                 assert (
-                    self.session.query(Station).filter(Station.id == station).first()
-                    is not None
+                        self.session.query(Station).filter(Station.id == station).first()
+                        is not None
                 ), "Station not found"
 
             elif isinstance(station, tuple):
@@ -145,8 +150,8 @@ class DepotRotationOptimizer:
 
             for vt in vehicle_type:
                 assert (
-                    self.session.query(VehicleType).filter(VehicleType.id == vt).first()
-                    is not None
+                        self.session.query(VehicleType).filter(VehicleType.id == vt).first()
+                        is not None
                 ), ("Vehicle type " "not found")
 
         # Store the data
@@ -177,7 +182,6 @@ class DepotRotationOptimizer:
         depot_df["depot_id"] = list(range(len(depot_input)))
         depot_df["depot_station"] = station_coords
         depot_df["capacity"] = capacities
-        # depot_df.set_index("depot_id", inplace=True)
         self.data["depot"] = depot_df
 
         # VehicleType-Depot availability
@@ -209,14 +213,32 @@ class DepotRotationOptimizer:
         rotation_df = get_rotation(self.session, self.scenario_id)
         self.data["rotation"] = rotation_df
 
+        # Get the assignment between vehicle type and rotation
+        assignment = get_rotation_vehicle_assign(self.session, self.scenario_id)
+        self.data["assignment"] = assignment
+
+
         # Get time-wise occupancy of each rotation
         occupancy_df = get_occupancy(self.session, self.scenario_id)
         self.data["occupancy"] = occupancy_df
 
         # Generate cost table
         cost_df = rotation_df.merge(depot_df, how="cross")
+
+
+        # TODO still need to improve performance. Try initialize one ors client total instead of every time
+
+
+        base_url = os.environ["BASE_URL"]
+
+        if base_url is None:
+            raise ValueError("BASE_URL is not set")
+
+        client = openrouteservice.Client(base_url=base_url)
+
+
         cost_df["cost"] = cost_df.apply(
-            lambda x: deadhead_cost(x["start_station_coord"], x["depot_station"]),
+            lambda x: deadhead_cost(x["start_station_coord"], x["depot_station"], client),
             axis=1,
         )
         self.data["cost"] = cost_df
@@ -231,30 +253,28 @@ class DepotRotationOptimizer:
         T = self.data["vehicle_type"]["vehicle_type_id"].tolist()
         # s for time slots
         S = self.data["occupancy"].columns.values.tolist()
-        # S = [i[0] for i in S]
+        S = [int(i) for i in S]
 
         # n_j: depot-vehicle type capacity
         n = self.data["depot"].set_index("depot_id").to_dict()["capacity"]
 
         # a_jt: depot-vehicle type availability
+        # commented for reading file cases
         a = self.data["vehicletype_depot"].to_dict()
 
+
+
         # v_it: rotation-type
-        def v(i, t):
-            return (
-                1
-                if self.data["rotation"]
-                .loc[self.data["rotation"]["rotation_id"] == i, "vehicle_type_id"]
-                .values
-                == t
-                else 0
-            )
+        v = self.data["assignment"].set_index(["rotation_id", "vehicle_type_id"]).to_dict()
+        v = v["assignment"]
 
         # c_ij: rotation-depot cost
         c = self.data["cost"].set_index(["rotation_id", "depot_id"]).to_dict()["cost"]
 
         # o_si: rotation-time slot occupancy
+
         o = self.data["occupancy"].to_dict()
+        o = {int(k): v for k, v in o.items()}
 
         # f_t: vehicle type factor
         f = (
@@ -286,17 +306,12 @@ class DepotRotationOptimizer:
         # Depot capacity constraint
         @model.Constraint(J, S)
         def depot_capacity_constraint(m, j, s):
-            return (
-                sum(
-                    sum(o[s][i] * v(i, t) * model.x[i, j] for i in I) * f[t] for t in T
-                )  # TODO f[t,j] = 0 if depot j has
-                # no place for type t
-                <= n[j]
-            )
+            return sum(sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[t] for t in T) <= n[j]
+
 
         @model.Constraint(I, J, T)
         def vehicle_type_depot_availability(m, i, j, t):
-            return model.x[i, j] * v(i, t) * a[j][t] == 1
+            return v[i, t] * model.x[i, j] <= a[j][t]
 
         # Solve
 
@@ -356,4 +371,4 @@ class DepotRotationOptimizer:
         )
 
         plt.show()
-        plt.savefig("cost_comparison_distance.png")
+        # plt.savefig("cost_comparison_distance.png")

@@ -481,9 +481,13 @@ class TestDepotRotationOptimizer(TestHelpers):
             },
         ]
 
+
         optimizer.delete_original_data()
         optimizer.get_depot_from_input(user_input_depot)
         optimizer.data_preparation()
+
+        for k, v in optimizer.data.items():
+            v.to_json("test"+f"{k}.json")
         optimizer.optimize()
 
         assert optimizer.data["result"] is not None
