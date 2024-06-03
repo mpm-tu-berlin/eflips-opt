@@ -53,4 +53,5 @@ if __name__ == "__main__":
         optimizer.data["result"].to_csv("results.csv")
         optimizer.visualize()
         optimizer.write_optimization_results(delete_original_data=True)
-        session.rollback()
+        session.commit()
+        # session.rollback()

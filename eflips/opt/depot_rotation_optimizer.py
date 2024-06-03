@@ -431,6 +431,9 @@ class DepotRotationOptimizer:
                 ]["cost"].iloc[0]
             route_distance = route_cost["distance"]
             route_duration = route_cost["duration"]
+            if (route_distance == 0.0) & (route_duration == 0.0):
+            # TODO not recommended to do float comparisons. Find some other way
+                continue
             trips = (
                 self.session.query(Trip)
                 .filter(Trip.rotation_id == row.rotation_id)
@@ -495,7 +498,7 @@ class DepotRotationOptimizer:
                                - timedelta(seconds=route_duration),
                 arrival_time=first_trip.departure_time,
             )
-            self.session.add(new_ferry_trip)
+
 
             # Add stop times
             ferry_stop_times = [
@@ -515,6 +518,8 @@ class DepotRotationOptimizer:
                 ),
             ]
             self.session.add_all(ferry_stop_times)
+            new_ferry_trip.stop_times = ferry_stop_times
+            self.session.add(new_ferry_trip)
 
             # Return-route
             last_trip = trips[-1]
@@ -570,7 +575,9 @@ class DepotRotationOptimizer:
                 arrival_time=last_trip.departure_time
                              + timedelta(seconds=route_duration),
             )
-            self.session.add(new_return_trip)
+
+
+
 
             # Add stop times
             return_stop_times = [
@@ -589,8 +596,9 @@ class DepotRotationOptimizer:
                     dwell_duration=timedelta(seconds=0),
                 ),
             ]
-
             self.session.add_all(return_stop_times)
+            new_return_trip.stop_times = return_stop_times
+            self.session.add(new_return_trip)
 
     def visualize(self, cost="distance"):
         new_assign = self.data["result"]

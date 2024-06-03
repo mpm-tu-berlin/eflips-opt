@@ -159,11 +159,9 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
         )
 
         # Find the first and last non-depot station for each rotation
-        # Here, the old deadhead trips are already deleted. So the start and end station are excluding the depots
-        # TODO potential optimization?
         start_station = (
             session.query(Station.geom)
-            .join(Route, Station.id == Route.departure_station_id)
+            .join(Route, Station.id == Route.arrival_station_id)
             .join(Trip, Trip.route_id == Route.id)
             .filter(Trip.id == trips[0][0])
             .one()[0]
@@ -171,7 +169,7 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
 
         end_station = (
             session.query(Station.geom)
-            .join(Route, Station.id == Route.arrival_station_id)
+            .join(Route, Station.id == Route.departure_station_id)
             .join(Trip, Trip.route_id == Route.id)
             .filter(Trip.id == trips[-1][0])
             .one()[0]
