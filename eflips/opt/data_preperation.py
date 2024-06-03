@@ -1,3 +1,5 @@
+import pickle
+from tempfile import gettempdir
 from typing import Tuple
 
 import openrouteservice
@@ -34,7 +36,7 @@ from eflips.model import (
 )
 
 
-def deadhead_cost(
+async def deadhead_cost(
     p1: Tuple[float, float],
     p2: Tuple[float, float],
     client,
@@ -61,9 +63,21 @@ def deadhead_cost(
     # client = openrouteservice.Client(base_url=base_url)
     coords = (p1, p2)
 
-    routes = client.request(
-        url=new_url, post_json={"coordinates": coords, "format": data_format}
-    )
+    temporary_directory = os.path.join(gettempdir(), "eflips-ors-cache")
+    os.makedirs(temporary_directory, exist_ok=True)
+
+    file_name = f"{coords}.pkl"
+    file_path = os.path.join(temporary_directory, file_name)
+
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as file:
+            routes = pickle.load(file)
+    else:
+        routes = client.request(
+            url=new_url, post_json={"coordinates": coords, "format": data_format}
+        )
+        with open(file_path, "wb") as file:
+            pickle.dump(routes, file)
 
     return {
         "distance": routes["routes"][0]["segments"][0]["distance"],
@@ -89,28 +103,31 @@ def get_rand_rotation(session, scenario_id, n):
     return rotidx
 
 
-def get_deport_rot_assign(session, scenario_id, rotidx):
+def get_depot_rot_assign(session, scenario_id):
     data = []
-    for rid in rotidx:
+
+    rotation_ids = (
+        session.query(Rotation.id).filter(Rotation.scenario_id == scenario_id).all()
+    )
+    for rid in rotation_ids:
         trips = (
             session.query(Trip.id)
-            .filter(Trip.rotation_id == rid)
+            .filter(Trip.rotation_id == rid[0])
             .order_by(Trip.departure_time)
             .all()
         )
 
-        depot_id = (
-            session.query(Depot.id)
-            .join(Station, Station.id == Depot.station_id)
+        depot_station_id = (
+            session.query(Station.id)
             .join(Route, Station.id == Route.departure_station_id)
             .join(Trip, Trip.route_id == Route.id)
             .filter(Trip.id == trips[0][0])
             .one()
         )
 
-        data.append([rid, depot_id[0]])
+        data.append([rid[0], depot_station_id[0]])
 
-    return pd.DataFrame(data, columns=["rotation_id", "depot_id"])
+    return pd.DataFrame(data, columns=["rotation_id", "orig_depot_station"])
 
 
 def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
@@ -280,13 +297,16 @@ def get_rotation_vehicle_assign(session, scenario_id):
     :return:
     """
 
-    rotations = session.query(Rotation.id, Rotation.vehicle_type_id).filter(Rotation.scenario_id == scenario_id).all()
+    rotations = (
+        session.query(Rotation.id, Rotation.vehicle_type_id)
+        .filter(Rotation.scenario_id == scenario_id)
+        .all()
+    )
     vehicle_types = (
         session.query(VehicleType.id)
         .filter(VehicleType.scenario_id == scenario_id)
         .all()
     )
-
 
     assignment = []
 
@@ -356,13 +376,11 @@ def get_occupancy(
 
     """
 
-
-
     # Get the shortest rotation duration as time window
 
-
-
-    rotations = session.query(Rotation).filter(Rotation.scenario_id == scenario_id).all()
+    rotations = (
+        session.query(Rotation).filter(Rotation.scenario_id == scenario_id).all()
+    )
     rotation_ids = [r.id for r in rotations]
 
     min_duration = 0
@@ -383,9 +401,7 @@ def get_occupancy(
     start_time = start_and_end_time[0].timestamp()
     end_time = start_and_end_time[1].timestamp()
 
-    sampled_time_stamp = np.arange(
-        start_time, end_time, time_window, dtype=int
-    )
+    sampled_time_stamp = np.arange(start_time, end_time, time_window, dtype=int)
     occupancy = np.zeros((len(rotations), len(sampled_time_stamp)), dtype=int)
 
     for idx, rotation_id in enumerate(rotation_ids):
@@ -415,14 +431,16 @@ def get_occupancy(
             right=0,
         )
 
-        assert sum(occupancy[idx]) != 0, (f"Rotation {rotation_id} has no occupancy over this time period. Please "
-                                          f"check if the time window is too large.")
+        assert sum(occupancy[idx]) != 0, (
+            f"Rotation {rotation_id} has no occupancy over this time period. Please "
+            f"check if the time window is too large."
+        )
 
     occupancy = pd.DataFrame(occupancy, columns=sampled_time_stamp, index=rotation_ids)
     return occupancy
 
 
-def update_deadhead_trip(session: Session, new_assign: pd.DataFrame):
+def update_deadhead_trip(session: Session, scenario_id, new_assign: pd.DataFrame):
     """
     Update the deadhead trip in the database according to result of the optimization
     :param session:

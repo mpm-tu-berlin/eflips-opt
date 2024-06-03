@@ -434,12 +434,12 @@ class TestDepotRotationOptimizer(TestHelpers):
             {"depot_station": 1, "capacity": 10, "vehicle_type": [1]},
             {
                 "depot_station": (13.331493462156047, 52.50356808223075),
+                "name": "new depot station",
                 "capacity": 10,
                 "vehicle_type": [2],
             },
         ]
 
-        optimizer.delete_original_data()
         optimizer.get_depot_from_input(user_input_depot)
         optimizer.data_preparation()
 
@@ -475,19 +475,21 @@ class TestDepotRotationOptimizer(TestHelpers):
         user_input_depot = [
             {"depot_station": 1, "capacity": 10, "vehicle_type": [1]},
             {
-                "depot_station": (13.332105437227769, 52.50929116968019),  # Hertzallee
+                "depot_station": (13.332105437227769, 52.50929116968019),
+                "name": "Station Hertzallee",
                 "capacity": 10,
                 "vehicle_type": [2],
             },
         ]
 
-
-        optimizer.delete_original_data()
         optimizer.get_depot_from_input(user_input_depot)
         optimizer.data_preparation()
 
-        for k, v in optimizer.data.items():
-            v.to_json("test"+f"{k}.json")
         optimizer.optimize()
 
         assert optimizer.data["result"] is not None
+        assert optimizer.data["result"].shape[0] == optimizer.data["rotation"].shape[0]
+
+        # optimizer.visualize()
+        optimizer.write_optimization_results(delete_original_data=True)
+        session.commit()
