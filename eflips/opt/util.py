@@ -1,11 +1,11 @@
+import asyncio
 import pickle
 from tempfile import gettempdir
-from typing import Tuple
-
+from typing import Tuple, List, Dict
 
 import os
 
-
+import openrouteservice
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
 
@@ -74,6 +74,18 @@ async def deadhead_cost(
     }  # Using segments instead of summary for 0 distance cases
 
 
+async def calculate_deadhead_costs(
+    df: pd.DataFrame, client: openrouteservice.Client
+) -> List[Dict[str, float]]:
+    # Asynchronously compute deadhead cost
+    deadhead_costs: List[Dict[str, float]] = []
+    for row in df.itertuples():
+        cost_promise = deadhead_cost(row.start_station_coord, row.depot_station, client)
+        deadhead_costs.append(cost_promise)
+
+    # Now the list is filled with promises/coroutines. We need to await them
+    deadhead_costs = await asyncio.gather(*deadhead_costs)
+    return deadhead_costs
 
 
 def get_depot_rot_assign(session, scenario_id):
@@ -192,7 +204,6 @@ def depot_data(session, scenario_id):
     return depot_df
 
 
-
 def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     """
     This function takes the session and scenario_id and returns the vehicle types and there size factors compared to a
@@ -251,7 +262,6 @@ def get_rotation_vehicle_assign(session, scenario_id):
     return pd.DataFrame(
         assignment, columns=["rotation_id", "vehicle_type_id", "assignment"]
     )
-
 
 
 def get_occupancy(
@@ -332,5 +342,3 @@ def get_occupancy(
 
     occupancy = pd.DataFrame(occupancy, columns=sampled_time_stamp, index=rotation_ids)
     return occupancy
-
-

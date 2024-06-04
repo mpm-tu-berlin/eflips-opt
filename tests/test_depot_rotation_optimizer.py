@@ -78,12 +78,12 @@ class TestHelpers:
 
         # Add a vehicle type without a battery type
         vehicle_type = VehicleType(
-                scenario=scenario,
-                name="Test Vehicle Type 2",
-                battery_capacity=100,
-                charging_curve=[[0, 150], [1, 150]],
-                opportunity_charging_capable=True,
-            )
+            scenario=scenario,
+            name="Test Vehicle Type 2",
+            battery_capacity=100,
+            charging_curve=[[0, 150], [1, 150]],
+            opportunity_charging_capable=True,
+        )
 
         session.add(vehicle_type)
 
@@ -459,8 +459,6 @@ class TestDepotRotationOptimizer(TestHelpers):
             optimizer.get_depot_from_input(user_input)
 
         session.rollback()
-
-
 
     def test_data_preparation(self, session, full_scenario, optimizer):
         user_input_depot = [

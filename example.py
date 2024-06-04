@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 
 from eflips.opt.depot_rotation_optimizer import DepotRotationOptimizer
 
-SCENARIO_ID = 11
+SCENARIO_ID = 10
 
 if __name__ == "__main__":
 

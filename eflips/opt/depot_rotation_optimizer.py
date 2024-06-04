@@ -34,6 +34,7 @@ from eflips.opt.util import (
     deadhead_cost,
     get_rotation_vehicle_assign,
     get_depot_rot_assign,
+    calculate_deadhead_costs,
 )
 
 
@@ -190,7 +191,8 @@ class DepotRotationOptimizer:
         all_vehicle_types = list(set(all_vehicle_types))
         all_vehicle_types.sort()
         all_demanded_types = (
-            self.session.query(Rotation.vehicle_type_id).filter(Rotation.scenario_id == self.scenario_id)
+            self.session.query(Rotation.vehicle_type_id)
+            .filter(Rotation.scenario_id == self.scenario_id)
             .distinct(Rotation.vehicle_type_id)
             .order_by(Rotation.vehicle_type_id)
             .all()
@@ -307,21 +309,6 @@ class DepotRotationOptimizer:
 
         client = openrouteservice.Client(base_url=base_url)
 
-        async def calculate_deadhead_costs(
-            df: pd.DataFrame, client: openrouteservice.Client
-        ) -> List[Dict[str, float]]:
-            # Asynchronously compute deadhead cost
-            deadhead_costs: List[Dict[str, float]] = []
-            for row in df.itertuples():
-                cost_promise = deadhead_cost(
-                    row.start_station_coord, row.depot_station, client
-                )
-                deadhead_costs.append(cost_promise)
-
-            # Now the list is filled with promises/coroutines. We need to await them
-            deadhead_costs = await asyncio.gather(*deadhead_costs)
-            return deadhead_costs
-
         # Run the async function
         deadhead_costs = asyncio.run(calculate_deadhead_costs(cost_df, client))
 
@@ -347,13 +334,12 @@ class DepotRotationOptimizer:
         S = [int(i) for i in S]
 
         # n_j: depot-vehicle type capacity
-        # TODO see if that is correct
         depot = self.data["depot"]
         n = depot.set_index("depot_id").to_dict()["capacity"]
 
         # a_jt: depot-vehicle type availability
         # commented for reading file cases
-        a = self.data["vehicletype_depot"].to_dict()
+        # a = self.data["vehicletype_depot"].to_dict()
 
         # v_it: rotation-type
         v = (
@@ -406,9 +392,9 @@ class DepotRotationOptimizer:
                 <= n[j]
             )
 
-        @model.Constraint(I, J, T)
-        def vehicle_type_depot_availability(m, i, j, t):
-            return v[i, t] * model.x[i, j] <= a[j][t]
+        # @model.Constraint(I, J, T)
+        # def vehicle_type_depot_availability(m, i, j, t):
+        #     return v[i, t] * model.x[i, j] <= a[j][t]
 
         # Solve
 
