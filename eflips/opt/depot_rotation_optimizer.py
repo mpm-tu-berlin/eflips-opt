@@ -9,7 +9,6 @@ from typing import Dict, Any, List, Tuple
 from geoalchemy2.shape import to_shape
 import pandas as pd
 
-
 import pyomo.environ as pyo
 from pyomo.common.timing import report_timing
 
@@ -83,26 +82,26 @@ class DepotRotationOptimizer:
             # - Meanwhile, delete the stoptimes of the trip
 
             if (
-                first_trip is not None
-                and first_trip.trip_type == TripType.EMPTY
-                and self.session.query(Depot.station_id)
-                .join(Station, Station.id == Depot.station_id)
-                .join(Route, Route.departure_station_id == Station.id)
-                .filter(Route.id == first_trip.route_id)
-                .first()
-                is not None
+                    first_trip is not None
+                    and first_trip.trip_type == TripType.EMPTY
+                    and self.session.query(Depot.station_id)
+                    .join(Station, Station.id == Depot.station_id)
+                    .join(Route, Route.departure_station_id == Station.id)
+                    .filter(Route.id == first_trip.route_id)
+                    .first()
+                    is not None
             ):
                 trips_to_delete.append(first_trip)
                 stoptimes_to_delete.extend(first_trip.stop_times)
 
             if (
-                last_trip is not None
-                and last_trip.trip_type == TripType.EMPTY
-                and self.session.query(Depot.station_id)
-                .join(Station, Station.id == Depot.station_id)
-                .join(Route, Route.arrival_station_id == Station.id)
-                .filter(Route.id == last_trip.route_id)
-                .first()
+                    last_trip is not None
+                    and last_trip.trip_type == TripType.EMPTY
+                    and self.session.query(Depot.station_id)
+                    .join(Station, Station.id == Depot.station_id)
+                    .join(Route, Route.arrival_station_id == Station.id)
+                    .filter(Route.id == last_trip.route_id)
+                    .first()
             ):
                 trips_to_delete.append(last_trip)
                 stoptimes_to_delete.extend(last_trip.stop_times)
@@ -144,8 +143,8 @@ class DepotRotationOptimizer:
             station = depot["depot_station"]
             if isinstance(station, int):
                 assert (
-                    self.session.query(Station).filter(Station.id == station).first()
-                    is not None
+                        self.session.query(Station).filter(Station.id == station).first()
+                        is not None
                 ), "Station not found"
 
             elif isinstance(station, tuple):
@@ -173,8 +172,8 @@ class DepotRotationOptimizer:
 
             for vt in vehicle_type:
                 assert (
-                    self.session.query(VehicleType).filter(VehicleType.id == vt).first()
-                    is not None
+                        self.session.query(VehicleType).filter(VehicleType.id == vt).first()
+                        is not None
                 ), f"Vehicle type {vt} not found"
 
                 all_vehicle_types.append(vt)
@@ -182,7 +181,7 @@ class DepotRotationOptimizer:
             # Get the capacity
             capacity = depot["capacity"]
             assert (
-                isinstance(capacity, int) and capacity >= 0
+                    isinstance(capacity, int) and capacity >= 0
             ), "Capacity should be a non-negative integer"
         # Store the data
 
@@ -273,9 +272,19 @@ class DepotRotationOptimizer:
             total_vehicle_type, columns=["vehicle_type_id"]
         )
         for i in range(len(depot_input)):
-            vehicletype_depot_df[i] = [
-                int(v in depot_input[i]["vehicle_type"]) for v in total_vehicle_type
-            ]
+            vehicle_type_factors = []
+            for v in total_vehicle_type:
+                if v in depot_input[i]["vehicle_type"]:
+                    vehicle_type = self.session.query(VehicleType).filter(VehicleType.id == v).first()
+                    if vehicle_type.length is None:
+                        vehicle_type_factors.append(1.0)
+                    else:
+                        vehicle_type_factors.append(vehicle_type.length / 12.0)
+
+                else:
+                    vehicle_type_factors.append(depot_df.iloc[i]["capacity"])
+
+            vehicletype_depot_df[i] = vehicle_type_factors
 
         # TODO where to set index?
         vehicletype_depot_df.set_index("vehicle_type_id", inplace=True)
@@ -340,8 +349,9 @@ class DepotRotationOptimizer:
         depot = self.data["depot"]
         n = depot.set_index("depot_id").to_dict()["capacity"]
 
-        # a_jt: depot-vehicle type availability
-        a = self.data["vehicletype_depot"].to_dict()
+        # f_jt: vehicle size factor for each depot. if a vehicle type is unavailable in a depot, the factor will be
+        # the same as the depot capacity
+        f = self.data["vehicletype_depot"].to_dict()
 
         # v_it: rotation-type
         v = (
@@ -358,13 +368,6 @@ class DepotRotationOptimizer:
         # TODO handle the keywords being string problem
         o = self.data["occupancy"].to_dict()
         o = {int(k): v for k, v in o.items()}
-
-        # f_t: vehicle type factor
-        f = (
-            self.data["vehicle_type"]
-            .set_index("vehicle_type_id")
-            .to_dict()["size_factor"]
-        )
 
         print("data acquired")
 
@@ -390,13 +393,9 @@ class DepotRotationOptimizer:
         @model.Constraint(J, S)
         def depot_capacity_constraint(m, j, s):
             return (
-                sum(sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[t] for t in T)
-                <= n[j]
+                    sum(sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[j][t] for t in T)
+                    <= n[j]
             )
-
-        @model.Constraint(I, J, T)
-        def vehicle_type_depot_availability(m, i, j, t):
-            return v[i, t] * model.x[i, j] <= a[j][t]
 
         # Solve
 
@@ -461,7 +460,7 @@ class DepotRotationOptimizer:
             route_cost = cost.loc[
                 (cost["rotation_id"] == row.rotation_id)
                 & (cost["depot_id"] == row.new_depot_id)
-            ]["cost"].iloc[0]
+                ]["cost"].iloc[0]
             route_distance = route_cost["distance"]
             route_duration = route_cost["duration"]
             if (route_distance == 0.0) & (route_duration == 0.0):
@@ -493,9 +492,9 @@ class DepotRotationOptimizer:
                     scenario_id=self.scenario_id,
                     distance=route_distance,
                     name="Einsetzfahrt "
-                    + str(depot_name)
-                    + " "
-                    + str(first_trip.route.departure_station.name),
+                         + str(depot_name)
+                         + " "
+                         + str(first_trip.route.departure_station.name),
                 )
 
                 assoc_ferry_station = [
@@ -526,7 +525,7 @@ class DepotRotationOptimizer:
                 rotation_id=row.rotation_id,
                 trip_type=TripType.EMPTY,
                 departure_time=first_trip.departure_time
-                - timedelta(seconds=route_duration),
+                               - timedelta(seconds=route_duration),
                 arrival_time=first_trip.departure_time,
             )
 
@@ -569,9 +568,9 @@ class DepotRotationOptimizer:
                     scenario_id=self.scenario_id,
                     distance=route_distance,
                     name="Aussetzfahrt "
-                    + str(last_trip.route.arrival_station.name)
-                    + " "
-                    + str(depot_name),
+                         + str(last_trip.route.arrival_station.name)
+                         + " "
+                         + str(depot_name),
                 )
                 assoc_return_station = [
                     AssocRouteStation(
@@ -601,7 +600,7 @@ class DepotRotationOptimizer:
                 trip_type=TripType.EMPTY,
                 departure_time=last_trip.departure_time,
                 arrival_time=last_trip.departure_time
-                + timedelta(seconds=route_duration),
+                             + timedelta(seconds=route_duration),
             )
 
             # Add stop times
@@ -661,7 +660,7 @@ class DepotRotationOptimizer:
                 diff.loc[
                     (diff["orig_depot_station"] == key[0])
                     & (diff["new_depot_id"] == key[1])
-                ].shape[0]
+                    ].shape[0]
             )
 
         fig = go.Figure(
