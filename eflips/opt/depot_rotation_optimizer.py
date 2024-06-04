@@ -315,11 +315,14 @@ class DepotRotationOptimizer:
         cost_df["cost"] = deadhead_costs
         self.data["cost"] = cost_df
 
-    def optimize(self, cost="distance", time_report=False):
+    def optimize(self, cost="distance", time_report=False, solver="gurobi"):
         """
         Optimize the depot rotation assignment problem and store the results in the data attribute.
         :param cost: the cost to be optimized. It can be either "distance" or "duration" for now with the default value of "distance".
         :param time_report: if set to True, the time report of the optimization will be printed.
+        :param solver: the solver to be used for the optimization. The default value is "gurobi". In order to use it, a valid license
+        should be available.
+
         :return: Nothing. The results will be stored in the data attribute.
         """
         # Building model in pyomo
@@ -338,8 +341,7 @@ class DepotRotationOptimizer:
         n = depot.set_index("depot_id").to_dict()["capacity"]
 
         # a_jt: depot-vehicle type availability
-        # commented for reading file cases
-        # a = self.data["vehicletype_depot"].to_dict()
+        a = self.data["vehicletype_depot"].to_dict()
 
         # v_it: rotation-type
         v = (
@@ -392,13 +394,13 @@ class DepotRotationOptimizer:
                 <= n[j]
             )
 
-        # @model.Constraint(I, J, T)
-        # def vehicle_type_depot_availability(m, i, j, t):
-        #     return v[i, t] * model.x[i, j] <= a[j][t]
+        @model.Constraint(I, J, T)
+        def vehicle_type_depot_availability(m, i, j, t):
+            return v[i, t] * model.x[i, j] <= a[j][t]
 
         # Solve
 
-        result = pyo.SolverFactory("gurobi").solve(model, tee=True)
+        result = pyo.SolverFactory(solver).solve(model, tee=True)
 
         new_assign = pd.DataFrame(
             {
