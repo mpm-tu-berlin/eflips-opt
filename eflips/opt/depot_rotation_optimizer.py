@@ -78,18 +78,12 @@ class DepotRotationOptimizer:
             # Delete the trip if:
             # - it is the first/last trip of the rotation
             # - it has the type of TripType.EMPTY
-            # - the station of the depot is the departure/arrival station of the route
             # - Meanwhile, delete the stoptimes of the trip
 
             if (
                     first_trip is not None
                     and first_trip.trip_type == TripType.EMPTY
-                    and self.session.query(Depot.station_id)
-                    .join(Station, Station.id == Depot.station_id)
-                    .join(Route, Route.departure_station_id == Station.id)
-                    .filter(Route.id == first_trip.route_id)
-                    .first()
-                    is not None
+
             ):
                 trips_to_delete.append(first_trip)
                 stoptimes_to_delete.extend(first_trip.stop_times)
@@ -97,11 +91,6 @@ class DepotRotationOptimizer:
             if (
                     last_trip is not None
                     and last_trip.trip_type == TripType.EMPTY
-                    and self.session.query(Depot.station_id)
-                    .join(Station, Station.id == Depot.station_id)
-                    .join(Route, Route.arrival_station_id == Station.id)
-                    .filter(Route.id == last_trip.route_id)
-                    .first()
             ):
                 trips_to_delete.append(last_trip)
                 stoptimes_to_delete.extend(last_trip.stop_times)
@@ -598,8 +587,8 @@ class DepotRotationOptimizer:
                 route=new_return_route,
                 rotation_id=row.rotation_id,
                 trip_type=TripType.EMPTY,
-                departure_time=last_trip.departure_time,
-                arrival_time=last_trip.departure_time
+                departure_time=last_trip.arrival_time,
+                arrival_time=last_trip.arrival_time
                              + timedelta(seconds=route_duration),
             )
 
