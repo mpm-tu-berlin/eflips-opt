@@ -1,6 +1,5 @@
 import os
 
-import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 
@@ -54,4 +53,3 @@ if __name__ == "__main__":
         optimizer.visualize()
         optimizer.write_optimization_results(delete_original_data=True)
         session.commit()
-        # session.rollback()

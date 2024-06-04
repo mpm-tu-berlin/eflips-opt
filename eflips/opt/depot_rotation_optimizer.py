@@ -9,10 +9,10 @@ from typing import Dict, Any, List, Tuple
 from geoalchemy2.shape import to_shape
 import pandas as pd
 
+
 import pyomo.environ as pyo
 from pyomo.common.timing import report_timing
 
-from matplotlib import pyplot as plt
 import plotly.graph_objects as go
 
 from eflips.model import (
@@ -27,14 +27,13 @@ from eflips.model import (
     AssocRouteStation,
 )
 
-from eflips.opt.data_preperation import (
+from eflips.opt.util import (
     get_vehicletype,
     get_rotation,
     get_occupancy,
     deadhead_cost,
     get_rotation_vehicle_assign,
     get_depot_rot_assign,
-    update_deadhead_trip,
 )
 
 
@@ -44,11 +43,13 @@ class DepotRotationOptimizer:
         self.scenario_id = scenario_id
         self.data = {}
 
-    def delete_original_data(self):
+    def _delete_original_data(self):
         """
-        Delete the original deadhead trips from the database, which are determined by the first and the last empty trips of each rotation
+        Delete the original deadhead trips from the database, which are determined by the first and the last empty
+        trips of each rotation. It is called by :meth:`write_optimization_results` method and must be executed before
+        new results are written to the database.
 
-        :return:
+        :return: Nothing. The original data will be deleted from the database.
         """
 
         # Get the rotations
@@ -81,26 +82,26 @@ class DepotRotationOptimizer:
             # - Meanwhile, delete the stoptimes of the trip
 
             if (
-                    first_trip is not None
-                    and first_trip.trip_type == TripType.EMPTY
-                    and self.session.query(Depot.station_id)
-                    .join(Station, Station.id == Depot.station_id)
-                    .join(Route, Route.departure_station_id == Station.id)
-                    .filter(Route.id == first_trip.route_id)
-                    .first()
-                    is not None
+                first_trip is not None
+                and first_trip.trip_type == TripType.EMPTY
+                and self.session.query(Depot.station_id)
+                .join(Station, Station.id == Depot.station_id)
+                .join(Route, Route.departure_station_id == Station.id)
+                .filter(Route.id == first_trip.route_id)
+                .first()
+                is not None
             ):
                 trips_to_delete.append(first_trip)
                 stoptimes_to_delete.extend(first_trip.stop_times)
 
             if (
-                    last_trip is not None
-                    and last_trip.trip_type == TripType.EMPTY
-                    and self.session.query(Depot.station_id)
-                    .join(Station, Station.id == Depot.station_id)
-                    .join(Route, Route.arrival_station_id == Station.id)
-                    .filter(Route.id == last_trip.route_id)
-                    .first()
+                last_trip is not None
+                and last_trip.trip_type == TripType.EMPTY
+                and self.session.query(Depot.station_id)
+                .join(Station, Station.id == Depot.station_id)
+                .join(Route, Route.arrival_station_id == Station.id)
+                .filter(Route.id == last_trip.route_id)
+                .first()
             ):
                 trips_to_delete.append(last_trip)
                 stoptimes_to_delete.extend(last_trip.stop_times)
@@ -115,7 +116,7 @@ class DepotRotationOptimizer:
 
     def get_depot_from_input(self, user_input_depot: List[Dict[str, Any]]):
         """
-        #TODO redo this docstring
+
         Get the depot data from the user input, validate and store it in the data attribute.
 
         :param user_input_depot: A dictionary containing the user input for the depot data. It should include the
@@ -124,6 +125,7 @@ class DepotRotationOptimizer:
         database, or a tuple of 2 floats representing the latitude and longitude of the station.
         - capacity: should be a positive integer representing the capacity of the depot.
         - vehicle_type: should be a list of integers representing the vehicle type id in the database.
+        - name: should be provided if the station is not in the database.
 
 
         :return: Nothing. The data will be stored in the data attribute.
@@ -133,14 +135,16 @@ class DepotRotationOptimizer:
         # - if the station exists when station id is given
         # - if the vehicle type exists when vehicle type id is given
         # - if the capacity is a positive integer
+        # - if the vehicle type in the rotations are available in all the depots
 
+        all_vehicle_types = []
         # Get the station
         for depot in user_input_depot:
             station = depot["depot_station"]
             if isinstance(station, int):
                 assert (
-                        self.session.query(Station).filter(Station.id == station).first()
-                        is not None
+                    self.session.query(Station).filter(Station.id == station).first()
+                    is not None
                 ), "Station not found"
 
             elif isinstance(station, tuple):
@@ -159,10 +163,6 @@ class DepotRotationOptimizer:
                     "Station should be either an integer or a tuple of 2 floats"
                 )
 
-            # Get the capacity
-            capacity = depot["capacity"]
-            assert isinstance(capacity, int), "Capacity should be an integer"
-
             # Get the vehicle type
             vehicle_type = depot["vehicle_type"]
             assert isinstance(
@@ -172,14 +172,53 @@ class DepotRotationOptimizer:
 
             for vt in vehicle_type:
                 assert (
-                        self.session.query(VehicleType).filter(VehicleType.id == vt).first()
-                        is not None
-                ), "Vehicle type not found"
+                    self.session.query(VehicleType).filter(VehicleType.id == vt).first()
+                    is not None
+                ), f"Vehicle type {vt} not found"
 
+                all_vehicle_types.append(vt)
+
+            # Get the capacity
+            capacity = depot["capacity"]
+            assert (
+                isinstance(capacity, int) and capacity >= 0
+            ), "Capacity should be a non-negative integer"
         # Store the data
+
+        # Check if the vehicle types in the rotations are available in all the depots
+
+        all_vehicle_types = list(set(all_vehicle_types))
+        all_vehicle_types.sort()
+        all_demanded_types = (
+            self.session.query(Rotation.vehicle_type_id).filter(Rotation.scenario_id == self.scenario_id)
+            .distinct(Rotation.vehicle_type_id)
+            .order_by(Rotation.vehicle_type_id)
+            .all()
+        )
+
+        for vt in all_demanded_types:
+            if vt[0] not in all_vehicle_types:
+                raise ValueError(
+                    "Not all demanded vehicle types are available in all depots"
+                )
+
         self.data["depot_from_user"] = user_input_depot
 
     def data_preparation(self):
+        """
+        Prepare the data for the optimization problem and store them into self.data. All the data are in :class:`pandas.DataFrame` format.
+        The data includes:
+        - depot: depot id and station coordinates
+        - vehicletype_depot: availability of vehicle types in depots
+        - vehicle_type: vehicle type size factors
+        - orig_assign: original depot rotation assignment
+        - rotation: start and end station of each rotation
+        - assignment: assignment between vehicle type and rotation
+        - occupancy: time-wise occupancy of each rotation
+        - cost: cost table of each rotation and depot
+
+        :return: Nothing. The data will be stored in the data attribute.
+        """
 
         # depot
         depot_input = self.data["depot_from_user"]
@@ -269,7 +308,7 @@ class DepotRotationOptimizer:
         client = openrouteservice.Client(base_url=base_url)
 
         async def calculate_deadhead_costs(
-                df: pd.DataFrame, client: openrouteservice.Client
+            df: pd.DataFrame, client: openrouteservice.Client
         ) -> List[Dict[str, float]]:
             # Asynchronously compute deadhead cost
             deadhead_costs: List[Dict[str, float]] = []
@@ -290,6 +329,12 @@ class DepotRotationOptimizer:
         self.data["cost"] = cost_df
 
     def optimize(self, cost="distance", time_report=False):
+        """
+        Optimize the depot rotation assignment problem and store the results in the data attribute.
+        :param cost: the cost to be optimized. It can be either "distance" or "duration" for now with the default value of "distance".
+        :param time_report: if set to True, the time report of the optimization will be printed.
+        :return: Nothing. The results will be stored in the data attribute.
+        """
         # Building model in pyomo
         # i for rotations
         I = self.data["rotation"]["rotation_id"].tolist()
@@ -357,8 +402,8 @@ class DepotRotationOptimizer:
         @model.Constraint(J, S)
         def depot_capacity_constraint(m, j, s):
             return (
-                    sum(sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[t] for t in T)
-                    <= n[j]
+                sum(sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[t] for t in T)
+                <= n[j]
             )
 
         @model.Constraint(I, J, T)
@@ -387,7 +432,7 @@ class DepotRotationOptimizer:
                 "Original data should be deleted in order to write the results to the database."
             )
         else:
-            self.delete_original_data()
+            self._delete_original_data()
 
         # Write new depot as stations
         depot_from_user = self.data["depot_from_user"]
@@ -428,11 +473,11 @@ class DepotRotationOptimizer:
             route_cost = cost.loc[
                 (cost["rotation_id"] == row.rotation_id)
                 & (cost["depot_id"] == row.new_depot_id)
-                ]["cost"].iloc[0]
+            ]["cost"].iloc[0]
             route_distance = route_cost["distance"]
             route_duration = route_cost["duration"]
             if (route_distance == 0.0) & (route_duration == 0.0):
-            # TODO not recommended to do float comparisons. Find some other way
+                # TODO not recommended to do float comparisons. Find some other way
                 continue
             trips = (
                 self.session.query(Trip)
@@ -460,9 +505,9 @@ class DepotRotationOptimizer:
                     scenario_id=self.scenario_id,
                     distance=route_distance,
                     name="Einsetzfahrt "
-                         + str(depot_name)
-                         + " "
-                         + str(first_trip.route.departure_station.name),
+                    + str(depot_name)
+                    + " "
+                    + str(first_trip.route.departure_station.name),
                 )
 
                 assoc_ferry_station = [
@@ -482,11 +527,9 @@ class DepotRotationOptimizer:
                 new_ferry_route.assoc_route_stations = assoc_ferry_station
                 self.session.add(new_ferry_route)
 
-
             else:
                 # There is such a route
                 new_ferry_route = ferry_route[0]
-
 
             # Add ferry trip
             new_ferry_trip = Trip(
@@ -495,10 +538,9 @@ class DepotRotationOptimizer:
                 rotation_id=row.rotation_id,
                 trip_type=TripType.EMPTY,
                 departure_time=first_trip.departure_time
-                               - timedelta(seconds=route_duration),
+                - timedelta(seconds=route_duration),
                 arrival_time=first_trip.departure_time,
             )
-
 
             # Add stop times
             ferry_stop_times = [
@@ -539,9 +581,9 @@ class DepotRotationOptimizer:
                     scenario_id=self.scenario_id,
                     distance=route_distance,
                     name="Aussetzfahrt "
-                         + str(last_trip.route.arrival_station.name)
-                         + " "
-                         + str(depot_name),
+                    + str(last_trip.route.arrival_station.name)
+                    + " "
+                    + str(depot_name),
                 )
                 assoc_return_station = [
                     AssocRouteStation(
@@ -563,8 +605,6 @@ class DepotRotationOptimizer:
             else:
                 new_return_route = return_route[0]
 
-
-
             # Add return trip
             new_return_trip = Trip(
                 scenario_id=self.scenario_id,
@@ -573,11 +613,8 @@ class DepotRotationOptimizer:
                 trip_type=TripType.EMPTY,
                 departure_time=last_trip.departure_time,
                 arrival_time=last_trip.departure_time
-                             + timedelta(seconds=route_duration),
+                + timedelta(seconds=route_duration),
             )
-
-
-
 
             # Add stop times
             return_stop_times = [
@@ -600,33 +637,12 @@ class DepotRotationOptimizer:
             new_return_trip.stop_times = return_stop_times
             self.session.add(new_return_trip)
 
-    def visualize(self, cost="distance"):
+    def visualize(self) -> go.Figure:
+        """
+        Visualize the changes of the depot-rotation assignment in a Sankey diagram.
+        :return: A :class:`plotly.graph_objects.Figure` object.
+        """
         new_assign = self.data["result"]
-
-        # TODO bad practice!! this is copy by reference!
-        cost_df = self.data["cost"].copy()
-        cost_df.set_index(["rotation_id", "depot_id"], inplace=True)
-        new_assign["cost"] = new_assign.apply(
-            lambda x: cost_df.loc[x["rotation_id"], x["new_depot_id"]]["cost"][cost],
-            axis=1,
-        )
-
-        # Plotting
-        new_cost = new_assign["cost"].tolist()
-
-        new_cost_mean = sum(new_cost) / len(new_cost)
-
-        plt.hist(new_cost, alpha=0.5)
-        plt.show()
-
-        min_ylim, max_ylim = plt.ylim()
-
-        plt.axvline(new_cost_mean, color="b", linestyle="dashed", linewidth=1)
-        plt.text(
-            new_cost_mean * 1.1,
-            max_ylim * 0.1,
-            "New_Mean: {:.2f}".format(new_cost_mean),
-        )
 
         depot_df = self.data["depot"]
         orig_assign = self.data["orig_assign"]
@@ -657,7 +673,7 @@ class DepotRotationOptimizer:
                 diff.loc[
                     (diff["orig_depot_station"] == key[0])
                     & (diff["new_depot_id"] == key[1])
-                    ].shape[0]
+                ].shape[0]
             )
 
         fig = go.Figure(
@@ -671,7 +687,7 @@ class DepotRotationOptimizer:
                         color="blue",
                     ),
                     link=dict(
-                        source=source,  # indices correspond to labels, eg A1, A2, A1, B1, ...
+                        source=source,
                         target=target,
                         value=value,
                     ),
@@ -683,3 +699,4 @@ class DepotRotationOptimizer:
             title_text="Changes of Assignment of Depot-Rotation", font_size=10
         )
         fig.show()
+        return fig

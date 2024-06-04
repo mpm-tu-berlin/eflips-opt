@@ -2,13 +2,9 @@ import pickle
 from tempfile import gettempdir
 from typing import Tuple
 
-import openrouteservice
+
 import os
-import math
 
-from datetime import timedelta
-
-import random
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
@@ -17,9 +13,7 @@ from geoalchemy2.shape import to_shape
 
 import pandas as pd
 import numpy as np
-from shapely import Point
 
-from sqlalchemy.orm.exc import NoResultFound
 
 from eflips.model import (
     Depot,
@@ -28,11 +22,6 @@ from eflips.model import (
     Route,
     Station,
     VehicleType,
-    Area,
-    AssocRouteStation,
-    StopTime,
-    Line,
-    TripType,
 )
 
 
@@ -85,22 +74,6 @@ async def deadhead_cost(
     }  # Using segments instead of summary for 0 distance cases
 
 
-def get_rand_rotation(session, scenario_id, n):
-    """
-    Get n random rotations from the scenario. It is used to select different set of rotations in testing cases.
-    :param session:
-    :param scenario_id:
-    :param n:
-    :return:
-    """
-    rotidx = session.scalars(
-        select(Rotation.id)
-        .filter(Rotation.scenario_id == scenario_id)
-        .order_by(func.random())
-        .limit(n)
-    ).all()
-
-    return rotidx
 
 
 def get_depot_rot_assign(session, scenario_id):
@@ -219,46 +192,6 @@ def depot_data(session, scenario_id):
     return depot_df
 
 
-def depot_capacity(session, scenario_id):
-    """
-
-    :param session:
-    :param scenario_id:
-    :return:
-    """
-
-    vehicle_types = (
-        session.query(VehicleType.id)
-        .filter(VehicleType.scenario_id == scenario_id)
-        .all()
-    )
-    depots = session.query(Depot.id).filter(Depot.scenario_id == scenario_id).all()
-
-    capacities = []
-    for depot in depots:
-        for vehicle_type in vehicle_types:
-            area_capacity = (
-                session.query(func.max(Area.capacity))
-                .filter(
-                    Area.depot_id == depot[0],
-                    Area.vehicle_type_id == vehicle_type[0],
-                    Area.scenario_id == scenario_id,
-                )
-                .group_by(Area.depot_id, Area.vehicle_type_id)
-                .all()
-            )
-            capacities.append(
-                [
-                    depot[0],
-                    vehicle_type[0],
-                    0 if len(area_capacity) == 0 else area_capacity[0][0],
-                ]
-            )
-
-    return pd.DataFrame(
-        capacities, columns=["depot_id", "vehicle_type_id", "capacity"]
-    ).set_index(["depot_id", "vehicle_type_id"])
-
 
 def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     """
@@ -320,41 +253,6 @@ def get_rotation_vehicle_assign(session, scenario_id):
     )
 
 
-def cost_rotation_depot(rotation_data: pd.DataFrame, depot_data: pd.DataFrame):
-    """
-
-    :param rotation_data:
-    :param depot_data:
-    :return:
-    """
-
-    rotation_data = rotation_data.merge(depot_data, how="cross")
-
-    rotation_data["distance"] = rotation_data.apply(
-        lambda x: deadhead_cost(
-            x["first_non_depot_station_coord"], x["depot_coord"], cost="distance"
-        )
-        + deadhead_cost(
-            x["last_non_depot_station_coord"], x["depot_coord"], cost="distance"
-        ),
-        axis=1,
-    )
-
-    rotation_data["duration"] = rotation_data.apply(
-        lambda x: deadhead_cost(
-            x["first_non_depot_station_coord"], x["depot_coord"], cost="duration"
-        )
-        + deadhead_cost(
-            x["last_non_depot_station_coord"], x["depot_coord"], cost="duration"
-        ),
-        axis=1,
-    )
-
-    cost = rotation_data[["rotation_id", "depot_id", "distance", "duration"]].set_index(
-        ["rotation_id", "depot_id"]
-    )
-    return cost
-
 
 def get_occupancy(
     session: Session,
@@ -403,9 +301,7 @@ def get_occupancy(
     occupancy = np.zeros((len(rotations), len(sampled_time_stamp)), dtype=int)
 
     for idx, rotation_id in enumerate(rotation_ids):
-        # TODO now since the deadhead trips are deleted, this occupancy does take that into account. We'll keep it
-        #  here and see how does it affect the results. Normally the deadhead trips last only several minutes which (
-        #  hopefully) could be ignored.
+
         rotation_start = (
             session.query(
                 func.min(Trip.departure_time).filter(Trip.rotation_id == rotation_id)
@@ -438,166 +334,3 @@ def get_occupancy(
     return occupancy
 
 
-def update_deadhead_trip(session: Session, scenario_id, new_assign: pd.DataFrame):
-    """
-    Update the deadhead trip in the database according to result of the optimization
-    :param session:
-    :param new_assign:
-    :return:
-    """
-    # TODO delete the event table and give warnings
-    for idx, row in new_assign.iterrows():
-        # Create new route with the new depot
-
-        # Create new trip with the new route and time
-
-        # Update the rotation.
-
-        depot_id = row["depot_id"]
-
-        depot_station_id = (
-            session.query(Depot.station_id).filter(Depot.id == depot_id).one()[0]
-        )
-        trip = (
-            session.query(Trip)
-            .filter(Trip.rotation_id == int(row["rotation_id"]))
-            .order_by(Trip.departure_time)
-            .all()
-        )
-
-        # Update the first trip
-        ferry_route = trip[0].route
-        if ferry_route.departure_station_id == depot_station_id:
-            # The assignment is the same.
-            continue
-        else:
-
-            # Create new data entries
-            scenario_id = (
-                session.query(Depot.scenario_id).filter(Depot.id == depot_id).one()[0]
-            )
-            first_station = ferry_route.arrival_station
-            last_station = trip[-1].route.departure_station
-            depot_station = (
-                session.query(Station)
-                .join(Depot, Station.id == Depot.station_id)
-                .filter(Depot.id == depot_id)
-                .one()
-            )
-            # Get distance from depot to first station
-            ferry_distance = deadhead_cost(
-                to_shape(depot_station.geom),
-                to_shape(first_station.geom),
-                cost="distance",
-            )
-            ferry_duration = math.ceil(
-                deadhead_cost(
-                    to_shape(depot_station.geom),
-                    to_shape(first_station.geom),
-                    cost="duration",
-                )
-            )
-
-            return_distance = deadhead_cost(
-                to_shape(last_station.geom),
-                to_shape(depot_station.geom),
-                cost="distance",
-            )
-            return_duration = math.ceil(
-                deadhead_cost(
-                    to_shape(last_station.geom),
-                    to_shape(depot_station.geom),
-                    cost="duration",
-                )
-            )
-            # Ferry trip
-
-            ferry_route = Route(
-                scenario_id=scenario_id,
-                name="RE" + str(depot_station.id) + "_" + str(first_station.id),
-                departure_station_id=depot_station.id,
-                arrival_station_id=first_station.id,
-                distance=ferry_distance,
-            )
-
-            return_route = Route(
-                scenario_id=scenario_id,
-                name="RA" + str(first_station.id) + "_" + str(depot_station.id),
-                departure_station_id=last_station.id,
-                arrival_station_id=depot_station.id,
-                distance=return_distance,
-            )
-
-            assoc_ferry_station = [
-                AssocRouteStation(
-                    scenario_id=scenario_id,
-                    station_id=depot_station.id,
-                    route=ferry_route,
-                    elapsed_distance=0,
-                ),
-                AssocRouteStation(
-                    scenario_id=scenario_id,
-                    station_id=first_station.id,
-                    route=ferry_route,
-                    elapsed_distance=ferry_distance,
-                ),
-            ]
-
-            ferry_route.assoc_route_stations = assoc_ferry_station
-
-            assoc_return_station = [
-                AssocRouteStation(
-                    scenario_id=scenario_id,
-                    station_id=last_station.id,
-                    route=return_route,
-                    elapsed_distance=0,
-                ),
-                AssocRouteStation(
-                    scenario_id=scenario_id,
-                    station_id=depot_station.id,
-                    route=return_route,
-                    elapsed_distance=return_distance,
-                ),
-            ]
-
-            return_route.assoc_route_stations = assoc_return_station
-            session.add(ferry_route)
-            session.add(return_route)
-
-            # Create new trip
-            new_ferry_trip = Trip(
-                scenario_id=scenario_id,
-                route=ferry_route,
-                trip_type=TripType.EMPTY,
-                departure_time=trip[0].arrival_time - timedelta(seconds=ferry_duration),
-                arrival_time=trip[0].arrival_time,
-                rotation_id=row["rotation_id"],
-            )
-            session.add(new_ferry_trip)
-
-            new_return_trip = Trip(
-                scenario_id=scenario_id,
-                route=return_route,
-                trip_type=TripType.EMPTY,
-                departure_time=trip[-1].departure_time,
-                arrival_time=trip[-1].departure_time
-                + timedelta(seconds=return_duration),
-                rotation_id=row["rotation_id"],
-            )
-
-            session.add(new_return_trip)
-
-            session.flush()
-
-            # Assign new trip to the stop times
-            session.query(StopTime).filter(StopTime.trip_id == trip[0].id).update(
-                {StopTime.trip_id: new_ferry_trip.id}
-            )
-            session.query(StopTime).filter(StopTime.trip_id == trip[-1].id).update(
-                {StopTime.trip_id: new_return_trip.id}
-            )
-            # Delete the old trip
-            session.query(Trip).filter(Trip.id == trip[0].id).delete()
-            session.query(Trip).filter(Trip.id == trip[-1].id).delete()
-
-            session.flush()

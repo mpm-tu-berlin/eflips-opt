@@ -78,12 +78,13 @@ class TestHelpers:
 
         # Add a vehicle type without a battery type
         vehicle_type = VehicleType(
-            scenario=scenario,
-            name="Test Vehicle Type 2",
-            battery_capacity=100,
-            charging_curve=[[0, 150], [1, 150]],
-            opportunity_charging_capable=True,
-        )
+                scenario=scenario,
+                name="Test Vehicle Type 2",
+                battery_capacity=100,
+                charging_curve=[[0, 150], [1, 150]],
+                opportunity_charging_capable=True,
+            )
+
         session.add(vehicle_type)
 
         # Add a VehicleClass
@@ -400,7 +401,7 @@ class TestHelpers:
 class TestDepotRotationOptimizer(TestHelpers):
 
     def test_delete_original_data(self, session, full_scenario, optimizer):
-        optimizer.delete_original_data()
+        optimizer._delete_original_data()
         session.commit()
 
         assert (
@@ -428,6 +429,38 @@ class TestDepotRotationOptimizer(TestHelpers):
         ]
         with pytest.raises(AssertionError):
             optimizer.get_depot_from_input(user_input)
+
+        # Test if all depots fail to provide all demanded vehicle types
+        # Adding a new vehicle type
+        vehicle_type = VehicleType(
+            id=5,
+            scenario=full_scenario,
+            name="Test Vehicle Type 3",
+            battery_capacity=100,
+            charging_curve=[[0, 150], [1, 150]],
+            opportunity_charging_capable=True,
+        )
+        session.add(vehicle_type)
+        rotation = session.query(Rotation).first()
+        rotation.vehicle_type = vehicle_type
+
+        session.flush()
+
+        user_input = [
+            {"depot_station": 1, "capacity": 10, "vehicle_type": [1, 2]},
+            {
+                "depot_station": (13.323828521189995, 52.517102453684146),
+                "name": "new depot station",
+                "capacity": 10,
+                "vehicle_type": [2],
+            },
+        ]
+        with pytest.raises(ValueError):
+            optimizer.get_depot_from_input(user_input)
+
+        session.rollback()
+
+
 
     def test_data_preparation(self, session, full_scenario, optimizer):
         user_input_depot = [
