@@ -14,7 +14,6 @@ from geoalchemy2.shape import to_shape
 import pandas as pd
 import numpy as np
 
-
 from eflips.model import (
     Depot,
     Rotation,
@@ -26,18 +25,21 @@ from eflips.model import (
 
 
 async def deadhead_cost(
-    p1: Tuple[float, float],
-    p2: Tuple[float, float],
-    client,
-    profile="driving-car",
-    service="directions",
-    data_format="geojson",
+        point_start: Tuple[float, float],
+        point_end: Tuple[float, float],
+        point_depot: Tuple[float, float],
+        client,
+        profile="driving-car",
+        service="directions",
+        data_format="geojson",
 ):
     """
     Calculate the cost between two points using the openrouteservice API
 
-    :param p1: Point 1
-    :param p2: Point 2
+    :param client:
+    :param point_start: Point start station after depot
+    :param point_end: Point end station before depot
+    :param point_depot: Point depot
     :param cost: Cost metric to use, default is distance
     :param profile: Profile to use, default is driving-car
     :param service: Service to use, default is directions
@@ -49,8 +51,7 @@ async def deadhead_cost(
     if base_url is None:
         raise ValueError("BASE_URL is not set")
 
-    # client = openrouteservice.Client(base_url=base_url)
-    coords = (p1, p2)
+    coords = (point_start, point_end, point_depot)
 
     temporary_directory = os.path.join(gettempdir(), "eflips-ors-cache")
     os.makedirs(temporary_directory, exist_ok=True)
@@ -62,25 +63,31 @@ async def deadhead_cost(
         with open(file_path, "rb") as file:
             routes = pickle.load(file)
     else:
-        routes = client.request(
-            url=new_url, post_json={"coordinates": coords, "format": data_format}
+        routes_ferry = client.request(
+            url=new_url, post_json={"coordinates": (point_depot, point_start), "format": data_format}
         )
+        routes_return = client.request(
+            url=new_url, post_json={"coordinates": (point_end, point_depot), "format": data_format}
+        )
+
+        routes = (routes_ferry, routes_return)
+
         with open(file_path, "wb") as file:
             pickle.dump(routes, file)
 
     return {
-        "distance": routes["routes"][0]["segments"][0]["distance"],
-        "duration": routes["routes"][0]["segments"][0]["duration"],
+        "distance": (routes[0]["routes"][0]["segments"][0]["distance"], routes[1]["routes"][0]["segments"][0]["distance"]),
+        "duration": (round(routes[0]["routes"][0]["segments"][0]["duration"]), round(routes[1]["routes"][0]["segments"][0]["duration"])) ,
     }  # Using segments instead of summary for 0 distance cases
 
 
 async def calculate_deadhead_costs(
-    df: pd.DataFrame, client: openrouteservice.Client
+        df: pd.DataFrame, client: openrouteservice.Client
 ) -> List[Dict[str, float]]:
     # Asynchronously compute deadhead cost
     deadhead_costs: List[Dict[str, float]] = []
     for row in df.itertuples():
-        cost_promise = deadhead_cost(row.start_station_coord, row.depot_station, client)
+        cost_promise = deadhead_cost(row.start_station_coord, row.end_station_coord, row.depot_station, client)
         deadhead_costs.append(cost_promise)
 
     # Now the list is filled with promises/coroutines. We need to await them
@@ -265,8 +272,8 @@ def get_rotation_vehicle_assign(session, scenario_id):
 
 
 def get_occupancy(
-    session: Session,
-    scenario_id: int,
+        session: Session,
+        scenario_id: int,
 ) -> pd.DataFrame:
     """
     Evaluate the occupancy over time of all the rotations with the time resolution given in :param time_window:. This
@@ -311,7 +318,6 @@ def get_occupancy(
     occupancy = np.zeros((len(rotations), len(sampled_time_stamp)), dtype=int)
 
     for idx, rotation_id in enumerate(rotation_ids):
-
         rotation_start = (
             session.query(
                 func.min(Trip.departure_time).filter(Trip.rotation_id == rotation_id)

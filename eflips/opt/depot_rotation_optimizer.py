@@ -370,7 +370,7 @@ class DepotRotationOptimizer:
         # Objective function
         @model.Objective()
         def obj(m):
-            return sum(c[i, j][cost] * model.x[i, j] for i in I for j in J)
+            return sum((c[i, j][cost][0] + c[i, j][cost][1]) * model.x[i, j] for i in I for j in J)
 
         # Constraints
         # Each rotation is assigned to exactly one depot
@@ -450,11 +450,11 @@ class DepotRotationOptimizer:
                 (cost["rotation_id"] == row.rotation_id)
                 & (cost["depot_id"] == row.new_depot_id)
                 ]["cost"].iloc[0]
-            route_distance = route_cost["distance"]
-            route_duration = route_cost["duration"]
-            if (route_distance == 0.0) & (route_duration == 0.0):
-                # TODO not recommended to do float comparisons. Find some other way
-                continue
+            ferry_route_distance = route_cost["distance"][0]
+            return_route_distance = route_cost["distance"][1]
+            ferry_route_duration = route_cost["duration"][0]
+            return_route_duration = route_cost["duration"][1]
+
             trips = (
                 self.session.query(Trip)
                 .filter(Trip.rotation_id == row.rotation_id)
@@ -479,7 +479,7 @@ class DepotRotationOptimizer:
                     arrival_station=first_trip.route.departure_station,
                     line_id=first_trip.route.line_id,
                     scenario_id=self.scenario_id,
-                    distance=route_distance,
+                    distance=ferry_route_distance if ferry_route_distance > 100 else 100, # assume minimum distance is 100m
                     name="Einsetzfahrt "
                          + str(depot_name)
                          + " "
@@ -497,7 +497,7 @@ class DepotRotationOptimizer:
                         scenario_id=self.scenario_id,
                         station=first_trip.route.departure_station,
                         route=new_ferry_route,
-                        elapsed_distance=route_distance,
+                        elapsed_distance=ferry_route_distance if ferry_route_distance > 100 else 100,
                     ),
                 ]
                 new_ferry_route.assoc_route_stations = assoc_ferry_station
@@ -514,7 +514,8 @@ class DepotRotationOptimizer:
                 rotation_id=row.rotation_id,
                 trip_type=TripType.EMPTY,
                 departure_time=first_trip.departure_time
-                               - timedelta(seconds=route_duration),
+                               - timedelta(seconds=ferry_route_duration if ferry_route_duration > 60 else 60), #
+                # minimum duration is 60s
                 arrival_time=first_trip.departure_time,
             )
 
@@ -555,7 +556,7 @@ class DepotRotationOptimizer:
                     arrival_station=depot_station,
                     line_id=first_trip.route.line_id,
                     scenario_id=self.scenario_id,
-                    distance=route_distance,
+                    distance=return_route_distance if return_route_distance > 100 else 100,
                     name="Aussetzfahrt "
                          + str(last_trip.route.arrival_station.name)
                          + " "
@@ -566,7 +567,7 @@ class DepotRotationOptimizer:
                         scenario_id=self.scenario_id,
                         station=depot_station,
                         route=new_return_route,
-                        elapsed_distance=route_distance,
+                        elapsed_distance=return_route_distance if return_route_distance > 100 else 100,
                     ),
                     AssocRouteStation(
                         scenario_id=self.scenario_id,
@@ -589,7 +590,7 @@ class DepotRotationOptimizer:
                 trip_type=TripType.EMPTY,
                 departure_time=last_trip.arrival_time,
                 arrival_time=last_trip.arrival_time
-                             + timedelta(seconds=route_duration),
+                             + timedelta(seconds=return_route_duration if return_route_duration > 60 else 60),
             )
 
             # Add stop times
