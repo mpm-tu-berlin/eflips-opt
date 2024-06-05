@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+import plotly.graph_objects as go
 
 import eflips.model
 import pytest
@@ -521,7 +522,9 @@ class TestDepotRotationOptimizer(TestHelpers):
         assert optimizer.data["result"] is not None
         assert optimizer.data["result"].shape[0] == optimizer.data["rotation"].shape[0]
 
-        optimizer.visualize()
+        fig = optimizer.visualize()
+
+        assert isinstance(fig, go.Figure)
         optimizer.write_optimization_results(delete_original_data=True)
         session.commit()
 
