@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import os
+import warnings
 from datetime import timedelta
 
 import openrouteservice
@@ -8,7 +9,6 @@ import openrouteservice
 from typing import Dict, Any, List, Tuple
 from geoalchemy2.shape import to_shape
 import pandas as pd
-
 
 import pyomo.environ as pyo
 from pyomo.common.timing import report_timing
@@ -19,7 +19,6 @@ from eflips.model import (
     Rotation,
     Trip,
     TripType,
-    Depot,
     Station,
     Route,
     VehicleType,
@@ -31,7 +30,6 @@ from eflips.opt.util import (
     get_vehicletype,
     get_rotation,
     get_occupancy,
-    deadhead_cost,
     get_rotation_vehicle_assign,
     get_depot_rot_assign,
     calculate_deadhead_costs,
@@ -79,31 +77,13 @@ class DepotRotationOptimizer:
             # Delete the trip if:
             # - it is the first/last trip of the rotation
             # - it has the type of TripType.EMPTY
-            # - the station of the depot is the departure/arrival station of the route
             # - Meanwhile, delete the stoptimes of the trip
 
-            if (
-                first_trip is not None
-                and first_trip.trip_type == TripType.EMPTY
-                and self.session.query(Depot.station_id)
-                .join(Station, Station.id == Depot.station_id)
-                .join(Route, Route.departure_station_id == Station.id)
-                .filter(Route.id == first_trip.route_id)
-                .first()
-                is not None
-            ):
+            if first_trip is not None and first_trip.trip_type == TripType.EMPTY:
                 trips_to_delete.append(first_trip)
                 stoptimes_to_delete.extend(first_trip.stop_times)
 
-            if (
-                last_trip is not None
-                and last_trip.trip_type == TripType.EMPTY
-                and self.session.query(Depot.station_id)
-                .join(Station, Station.id == Depot.station_id)
-                .join(Route, Route.arrival_station_id == Station.id)
-                .filter(Route.id == last_trip.route_id)
-                .first()
-            ):
+            if last_trip is not None and last_trip.trip_type == TripType.EMPTY:
                 trips_to_delete.append(last_trip)
                 stoptimes_to_delete.extend(last_trip.stop_times)
 
@@ -273,9 +253,23 @@ class DepotRotationOptimizer:
             total_vehicle_type, columns=["vehicle_type_id"]
         )
         for i in range(len(depot_input)):
-            vehicletype_depot_df[i] = [
-                int(v in depot_input[i]["vehicle_type"]) for v in total_vehicle_type
-            ]
+            vehicle_type_factors = []
+            for v in total_vehicle_type:
+                if v in depot_input[i]["vehicle_type"]:
+                    vehicle_type = (
+                        self.session.query(VehicleType)
+                        .filter(VehicleType.id == v)
+                        .first()
+                    )
+                    if vehicle_type.length is None:
+                        vehicle_type_factors.append(1.0)
+                    else:
+                        vehicle_type_factors.append(vehicle_type.length / 12.0)
+
+                else:
+                    vehicle_type_factors.append(depot_df.iloc[i]["capacity"])
+
+            vehicletype_depot_df[i] = vehicle_type_factors
 
         # TODO where to set index?
         vehicletype_depot_df.set_index("vehicle_type_id", inplace=True)
@@ -340,8 +334,9 @@ class DepotRotationOptimizer:
         depot = self.data["depot"]
         n = depot.set_index("depot_id").to_dict()["capacity"]
 
-        # a_jt: depot-vehicle type availability
-        a = self.data["vehicletype_depot"].to_dict()
+        # f_jt: vehicle size factor for each depot. if a vehicle type is unavailable in a depot, the factor will be
+        # the same as the depot capacity
+        f = self.data["vehicletype_depot"].to_dict()
 
         # v_it: rotation-type
         v = (
@@ -355,16 +350,8 @@ class DepotRotationOptimizer:
 
         # o_si: rotation-time slot occupancy
 
-        # TODO handle the keywords being string problem
         o = self.data["occupancy"].to_dict()
         o = {int(k): v for k, v in o.items()}
-
-        # f_t: vehicle type factor
-        f = (
-            self.data["vehicle_type"]
-            .set_index("vehicle_type_id")
-            .to_dict()["size_factor"]
-        )
 
         print("data acquired")
 
@@ -378,7 +365,11 @@ class DepotRotationOptimizer:
         # Objective function
         @model.Objective()
         def obj(m):
-            return sum(c[i, j][cost] * model.x[i, j] for i in I for j in J)
+            return sum(
+                (c[i, j][cost][0] + c[i, j][cost][1]) * model.x[i, j]
+                for i in I
+                for j in J
+            )
 
         # Constraints
         # Each rotation is assigned to exactly one depot
@@ -390,17 +381,26 @@ class DepotRotationOptimizer:
         @model.Constraint(J, S)
         def depot_capacity_constraint(m, j, s):
             return (
-                sum(sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[t] for t in T)
+                sum(
+                    sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[j][t]
+                    for t in T
+                )
                 <= n[j]
             )
 
-        @model.Constraint(I, J, T)
-        def vehicle_type_depot_availability(m, i, j, t):
-            return v[i, t] * model.x[i, j] <= a[j][t]
-
         # Solve
-
-        result = pyo.SolverFactory(solver).solve(model, tee=True)
+        try:
+            result = pyo.SolverFactory(solver).solve(model, tee=True)
+            if (
+                result.solver.termination_condition
+                == pyo.TerminationCondition.infeasible
+            ):
+                raise ValueError("No feasible solution found")
+        except Exception as e:
+            warnings.warn(
+                f"No feasible solution can be found. Please check your constraints."
+            )
+            return None
 
         new_assign = pd.DataFrame(
             {
@@ -415,6 +415,10 @@ class DepotRotationOptimizer:
         self.data["result"] = new_assign
 
     def write_optimization_results(self, delete_original_data=False):
+
+        if "result" not in self.data:
+            raise ValueError("No feasible solution found")
+
         if delete_original_data is False:
             raise ValueError(
                 "Original data should be deleted in order to write the results to the database."
@@ -462,11 +466,11 @@ class DepotRotationOptimizer:
                 (cost["rotation_id"] == row.rotation_id)
                 & (cost["depot_id"] == row.new_depot_id)
             ]["cost"].iloc[0]
-            route_distance = route_cost["distance"]
-            route_duration = route_cost["duration"]
-            if (route_distance == 0.0) & (route_duration == 0.0):
-                # TODO not recommended to do float comparisons. Find some other way
-                continue
+            ferry_route_distance = route_cost["distance"][0]
+            return_route_distance = route_cost["distance"][1]
+            ferry_route_duration = route_cost["duration"][0]
+            return_route_duration = route_cost["duration"][1]
+
             trips = (
                 self.session.query(Trip)
                 .filter(Trip.rotation_id == row.rotation_id)
@@ -491,7 +495,10 @@ class DepotRotationOptimizer:
                     arrival_station=first_trip.route.departure_station,
                     line_id=first_trip.route.line_id,
                     scenario_id=self.scenario_id,
-                    distance=route_distance,
+                    distance=(
+                        ferry_route_distance if ferry_route_distance > 100 else 100
+                    ),
+                    # assume minimum distance is 100m
                     name="Einsetzfahrt "
                     + str(depot_name)
                     + " "
@@ -509,7 +516,9 @@ class DepotRotationOptimizer:
                         scenario_id=self.scenario_id,
                         station=first_trip.route.departure_station,
                         route=new_ferry_route,
-                        elapsed_distance=route_distance,
+                        elapsed_distance=(
+                            ferry_route_distance if ferry_route_distance > 100 else 100
+                        ),
                     ),
                 ]
                 new_ferry_route.assoc_route_stations = assoc_ferry_station
@@ -526,7 +535,10 @@ class DepotRotationOptimizer:
                 rotation_id=row.rotation_id,
                 trip_type=TripType.EMPTY,
                 departure_time=first_trip.departure_time
-                - timedelta(seconds=route_duration),
+                - timedelta(
+                    seconds=ferry_route_duration if ferry_route_duration > 60 else 60
+                ),  #
+                # minimum duration is 60s
                 arrival_time=first_trip.departure_time,
             )
 
@@ -567,7 +579,9 @@ class DepotRotationOptimizer:
                     arrival_station=depot_station,
                     line_id=first_trip.route.line_id,
                     scenario_id=self.scenario_id,
-                    distance=route_distance,
+                    distance=(
+                        return_route_distance if return_route_distance > 100 else 100
+                    ),
                     name="Aussetzfahrt "
                     + str(last_trip.route.arrival_station.name)
                     + " "
@@ -578,7 +592,11 @@ class DepotRotationOptimizer:
                         scenario_id=self.scenario_id,
                         station=depot_station,
                         route=new_return_route,
-                        elapsed_distance=route_distance,
+                        elapsed_distance=(
+                            return_route_distance
+                            if return_route_distance > 100
+                            else 100
+                        ),
                     ),
                     AssocRouteStation(
                         scenario_id=self.scenario_id,
@@ -599,9 +617,11 @@ class DepotRotationOptimizer:
                 route=new_return_route,
                 rotation_id=row.rotation_id,
                 trip_type=TripType.EMPTY,
-                departure_time=last_trip.departure_time,
-                arrival_time=last_trip.departure_time
-                + timedelta(seconds=route_duration),
+                departure_time=last_trip.arrival_time,
+                arrival_time=last_trip.arrival_time
+                + timedelta(
+                    seconds=return_route_duration if return_route_duration > 60 else 60
+                ),
             )
 
             # Add stop times
@@ -630,6 +650,9 @@ class DepotRotationOptimizer:
         Visualize the changes of the depot-rotation assignment in a Sankey diagram.
         :return: A :class:`plotly.graph_objects.Figure` object.
         """
+        if "result" not in self.data:
+            raise ValueError("No feasible solution found")
+
         new_assign = self.data["result"]
 
         depot_df = self.data["depot"]

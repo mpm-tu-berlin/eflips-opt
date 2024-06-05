@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+import plotly.graph_objects as go
 
 import eflips.model
 import pytest
@@ -11,8 +12,6 @@ from eflips.model import (
     Base,
     BatteryType,
     Depot,
-    Event,
-    EventType,
     Line,
     Plan,
     Process,
@@ -23,7 +22,6 @@ from eflips.model import (
     StopTime,
     Trip,
     TripType,
-    Vehicle,
     VehicleClass,
     VehicleType,
 )
@@ -521,6 +519,31 @@ class TestDepotRotationOptimizer(TestHelpers):
         assert optimizer.data["result"] is not None
         assert optimizer.data["result"].shape[0] == optimizer.data["rotation"].shape[0]
 
-        # optimizer.visualize()
+        fig = optimizer.visualize()
+
+        assert isinstance(fig, go.Figure)
         optimizer.write_optimization_results(delete_original_data=True)
+        session.commit()
+
+    def test_optimize_with_infeasible_model(self, session, full_scenario, optimizer):
+        user_input_depot = [
+            {"depot_station": 1, "capacity": 1, "vehicle_type": [1]},
+            {
+                "depot_station": (13.332105437227769, 52.50929116968019),
+                "name": "Station Hertzallee",
+                "capacity": 1,
+                "vehicle_type": [2],
+            },
+        ]
+
+        optimizer.get_depot_from_input(user_input_depot)
+        optimizer.data_preparation()
+
+        optimizer.optimize()
+
+        with pytest.raises(ValueError):
+
+            optimizer.visualize()
+            optimizer.write_optimization_results(delete_original_data=True)
+
         session.commit()
