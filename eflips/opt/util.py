@@ -25,13 +25,13 @@ from eflips.model import (
 
 
 async def deadhead_cost(
-        point_start: Tuple[float, float],
-        point_end: Tuple[float, float],
-        point_depot: Tuple[float, float],
-        client,
-        profile="driving-car",
-        service="directions",
-        data_format="geojson",
+    point_start: Tuple[float, float],
+    point_end: Tuple[float, float],
+    point_depot: Tuple[float, float],
+    client,
+    profile="driving-car",
+    service="directions",
+    data_format="geojson",
 ):
     """
     Calculate the cost between two points using the openrouteservice API
@@ -64,10 +64,15 @@ async def deadhead_cost(
             routes = pickle.load(file)
     else:
         routes_ferry = client.request(
-            url=new_url, post_json={"coordinates": (point_depot, point_start), "format": data_format}
+            url=new_url,
+            post_json={
+                "coordinates": (point_depot, point_start),
+                "format": data_format,
+            },
         )
         routes_return = client.request(
-            url=new_url, post_json={"coordinates": (point_end, point_depot), "format": data_format}
+            url=new_url,
+            post_json={"coordinates": (point_end, point_depot), "format": data_format},
         )
 
         routes = (routes_ferry, routes_return)
@@ -76,18 +81,26 @@ async def deadhead_cost(
             pickle.dump(routes, file)
 
     return {
-        "distance": (routes[0]["routes"][0]["segments"][0]["distance"], routes[1]["routes"][0]["segments"][0]["distance"]),
-        "duration": (round(routes[0]["routes"][0]["segments"][0]["duration"]), round(routes[1]["routes"][0]["segments"][0]["duration"])) ,
+        "distance": (
+            routes[0]["routes"][0]["segments"][0]["distance"],
+            routes[1]["routes"][0]["segments"][0]["distance"],
+        ),
+        "duration": (
+            round(routes[0]["routes"][0]["segments"][0]["duration"]),
+            round(routes[1]["routes"][0]["segments"][0]["duration"]),
+        ),
     }  # Using segments instead of summary for 0 distance cases
 
 
 async def calculate_deadhead_costs(
-        df: pd.DataFrame, client: openrouteservice.Client
+    df: pd.DataFrame, client: openrouteservice.Client
 ) -> List[Dict[str, float]]:
     # Asynchronously compute deadhead cost
     deadhead_costs: List[Dict[str, float]] = []
     for row in df.itertuples():
-        cost_promise = deadhead_cost(row.start_station_coord, row.end_station_coord, row.depot_station, client)
+        cost_promise = deadhead_cost(
+            row.start_station_coord, row.end_station_coord, row.depot_station, client
+        )
         deadhead_costs.append(cost_promise)
 
     # Now the list is filled with promises/coroutines. We need to await them
@@ -272,8 +285,8 @@ def get_rotation_vehicle_assign(session, scenario_id):
 
 
 def get_occupancy(
-        session: Session,
-        scenario_id: int,
+    session: Session,
+    scenario_id: int,
 ) -> pd.DataFrame:
     """
     Evaluate the occupancy over time of all the rotations with the time resolution given in :param time_window:. This

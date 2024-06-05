@@ -49,7 +49,6 @@ if __name__ == "__main__":
         optimizer.data_preparation()
 
         optimizer.optimize(time_report=True)
-        optimizer.data["result"].to_csv("results.csv")
         optimizer.visualize()
         optimizer.write_optimization_results(delete_original_data=True)
         session.commit()
