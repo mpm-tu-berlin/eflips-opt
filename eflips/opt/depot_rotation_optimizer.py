@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import os
+import warnings
 from datetime import timedelta
 
 import openrouteservice
@@ -387,8 +388,14 @@ class DepotRotationOptimizer:
             )
 
         # Solve
+        try:
+            result = pyo.SolverFactory(solver).solve(model, tee=True)
+            if result.solver.termination_condition == pyo.TerminationCondition.infeasible:
+                raise ValueError("No feasible solution found")
+        except Exception as e:
+            warnings.warn(f"No feasible solution can be found. Please check your constraints.")
+            return None
 
-        result = pyo.SolverFactory(solver).solve(model, tee=True)
 
         new_assign = pd.DataFrame(
             {
@@ -403,6 +410,10 @@ class DepotRotationOptimizer:
         self.data["result"] = new_assign
 
     def write_optimization_results(self, delete_original_data=False):
+
+        if "result" not in self.data:
+            raise ValueError("No feasible solution found")
+
         if delete_original_data is False:
             raise ValueError(
                 "Original data should be deleted in order to write the results to the database."
@@ -619,6 +630,9 @@ class DepotRotationOptimizer:
         Visualize the changes of the depot-rotation assignment in a Sankey diagram.
         :return: A :class:`plotly.graph_objects.Figure` object.
         """
+        if "result" not in self.data:
+            raise ValueError("No feasible solution found")
+
         new_assign = self.data["result"]
 
         depot_df = self.data["depot"]
