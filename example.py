@@ -9,7 +9,18 @@ SCENARIO_ID = 10
 
 if __name__ == "__main__":
 
-    with Session(create_engine(os.environ.get("DATABASE_URL"))) as session:
+    if (
+        "DATABASE_URL" not in os.environ
+        or os.environ["DATABASE_URL"] is None
+        or os.environ["DATABASE_URL"] == ""
+    ):
+        raise ValueError(
+            "The database url must be specified either as an argument or as the environment variable DATABASE_URL."
+        )
+    else:
+        DATABASE_URL = os.environ["DATABASE_URL"]
+
+    with Session(create_engine(DATABASE_URL)) as session:
         optimizer = DepotRotationOptimizer(session, SCENARIO_ID)
 
         user_input_depot = [

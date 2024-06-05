@@ -12,8 +12,6 @@ from eflips.model import (
     Base,
     BatteryType,
     Depot,
-    Event,
-    EventType,
     Line,
     Plan,
     Process,
@@ -24,7 +22,6 @@ from eflips.model import (
     StopTime,
     Trip,
     TripType,
-    Vehicle,
     VehicleClass,
     VehicleType,
 )

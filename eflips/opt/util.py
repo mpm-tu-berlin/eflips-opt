@@ -1,13 +1,13 @@
 import asyncio
 import pickle
 from tempfile import gettempdir
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Coroutine, Any
 
 import os
 
 import openrouteservice
 from sqlalchemy.orm import Session
-from sqlalchemy import func, select
+from sqlalchemy import func
 
 from geoalchemy2.shape import to_shape
 
@@ -94,9 +94,9 @@ async def deadhead_cost(
 
 async def calculate_deadhead_costs(
     df: pd.DataFrame, client: openrouteservice.Client
-) -> List[Dict[str, float]]:
+) -> List[Coroutine]:
     # Asynchronously compute deadhead cost
-    deadhead_costs: List[Dict[str, float]] = []
+    deadhead_costs: List[Coroutine | Any] = []
     for row in df.itertuples():
         cost_promise = deadhead_cost(
             row.start_station_coord, row.end_station_coord, row.depot_station, client
@@ -314,10 +314,10 @@ def get_occupancy(
         first_trip = rotation.trips[0]
         last_trip = rotation.trips[-1]
         duration = last_trip.arrival_time - first_trip.departure_time
-        if min_duration == 0 or duration < min_duration:
-            min_duration = duration
+        if min_duration == 0 or duration.seconds < min_duration:
+            min_duration = duration.seconds
 
-    time_window = min_duration.seconds
+    time_window = min_duration
 
     start_and_end_time = (
         session.query(func.min(Trip.departure_time), func.max(Trip.arrival_time))
