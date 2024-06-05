@@ -7,7 +7,7 @@ packages = [{include="eflips/opt"}]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 eflips-model = "^3.0.0"
 sqlalchemy = "^2.0.28"
 pandas = "^2.1"
@@ -22,8 +22,10 @@ pytest = "^8.2.1"
 black = "^24.4.2"
 pylint = "^3.2.2"
 pre-commit = "^3.7.1"
-mypy = "^1.10.0"
+mypy = "^1.7.1"
 
+[tool.mypy]
+plugins = "numpy.typing.mypy_plugin"
 
 [build-system]
 requires = ["poetry-core"]

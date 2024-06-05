@@ -52,6 +52,7 @@ jobs:
           poetry run pytest
         env:
           DATABASE_URL: postgresql://user:password@localhost/database
+          BASE_URL: http://mpm-v-ors.mpm.tu-berlin.de:8080/ors/
           POSTGRES_HOST: localhost
           # The default PostgreSQL port
           POSTGRES_PORT: 5432
