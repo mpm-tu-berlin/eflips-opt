@@ -13,6 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cclauss/GitHub-Action-for-pylint@0.7.0
-      - run: pip install -r requirements.txt ; pylint --fail-under=8 src/
+      - run: poetry install; pylint --fail-under=8 src/
 
 
