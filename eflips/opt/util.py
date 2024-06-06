@@ -15,7 +15,6 @@ import pandas as pd
 import numpy as np
 
 from eflips.model import (
-    Depot,
     Rotation,
     Trip,
     Route,
@@ -28,10 +27,10 @@ async def deadhead_cost(
     point_start: Tuple[float, float],
     point_end: Tuple[float, float],
     point_depot: Tuple[float, float],
-    client,
-    profile="driving-car",
-    service="directions",
-    data_format="geojson",
+    client: openrouteservice.Client,
+    profile: str = "driving-car",
+    service: str = "directions",
+    data_format: str = "geojson",
 ) -> Dict[str, Tuple[float, float]]:
     """
     Calculate the cost between two points using the openrouteservice API
@@ -115,7 +114,7 @@ async def calculate_deadhead_costs(
     return deadhead_costs
 
 
-def get_depot_rot_assign(session, scenario_id):
+def get_depot_rot_assign(session: Session, scenario_id: int) -> pd.DataFrame:
     """
     This function takes a :class:'sqlalchemy.orm.Session' object and scenario_id and returns the depot rotation assignment exising in the database. It is used for comparing the assignment before and after the optimization.
     :param session: a :class:'sqlalchemy.orm.Session' object connected to the database
@@ -216,7 +215,9 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
     return rotation_df
 
 
-def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
+def get_vehicletype(
+    session: Session, scenario_id: int, standard_bus_length: float = 12.0
+) -> pd.DataFrame:
     """
     This function takes the session and scenario_id and returns the vehicle types and there size factors compared to a
     normal 12-meter bus
@@ -243,7 +244,7 @@ def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     return vt_df
 
 
-def get_rotation_vehicle_assign(session, scenario_id):
+def get_rotation_vehicle_assign(session: Session, scenario_id: int) -> pd.DataFrame:
     """
     This function takes the session and scenario_id and returns the rotation vehicle assignment existing in the database.
     :param session: a :class:'sqlalchemy.orm.Session' object connected to the database

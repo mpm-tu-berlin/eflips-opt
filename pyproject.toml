@@ -28,7 +28,6 @@ sphinx-paramlinks = "^0.6.0"
 
 [tool.mypy]
 plugins = "numpy.typing.mypy_plugin"
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

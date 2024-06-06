@@ -6,9 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "eflips-opt"
-copyright = "MPM TU Berlin"
-author = "Shuyao Guo"
+project = "Change this to your project name"
+copyright = "2023, Your Name"
+author = "Your Name"
 release = "0.1.0"
 
 # -- General configuration ---------------------------------------------------

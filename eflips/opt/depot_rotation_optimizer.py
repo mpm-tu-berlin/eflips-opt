@@ -5,6 +5,7 @@ import warnings
 from datetime import timedelta
 
 import openrouteservice
+from sqlalchemy.orm import Session
 
 from typing import Dict, Any, List, Tuple
 from geoalchemy2.shape import to_shape
@@ -37,7 +38,12 @@ from eflips.opt.util import (
 
 
 class DepotRotationOptimizer:
-    def __init__(self, session, scenario_id):
+    def __init__(self, session: Session, scenario_id: int):
+        """
+        Constructor of the DepotRotationOptimizer class. It initializes the session and the scenario id.
+        :param session: A sqlalchemy session to the database.
+        :param scenario_id: The scenario id for which the optimization will be performed.
+        """
         self.session = session
         self.scenario_id = scenario_id
         self.data = {}
@@ -95,7 +101,7 @@ class DepotRotationOptimizer:
 
         self.session.flush()
 
-    def get_depot_from_input(self, user_input_depot: List[Dict[str, Any]]):
+    def get_depot_from_input(self, user_input_depot: List[Dict[str, Any]]) -> None:
         """
         Get the depot data from the user input, validate and store it in the data attribute.
         :param user_input_depot: A dictionary containing the user input for the depot data. It should include the
@@ -184,7 +190,7 @@ class DepotRotationOptimizer:
 
         self.data["depot_from_user"] = user_input_depot
 
-    def data_preparation(self):
+    def data_preparation(self) -> None:
         """
         Prepare the data for the optimization problem and store them into self.data. All the data are in :class:`pandas.DataFrame` format.
         The data includes:
@@ -306,7 +312,9 @@ class DepotRotationOptimizer:
         cost_df["cost"] = deadhead_costs
         self.data["cost"] = cost_df
 
-    def optimize(self, cost="distance", time_report=False, solver="gurobi"):
+    def optimize(
+        self, cost: str = "distance", time_report=False, solver="gurobi"
+    ) -> None:
         """
         Optimize the depot rotation assignment problem and store the results in the data attribute.
         :param cost: the cost to be optimized. It can be either "distance" or "duration" for now with the default value of "distance".
@@ -411,7 +419,12 @@ class DepotRotationOptimizer:
 
         self.data["result"] = new_assign
 
-    def write_optimization_results(self, delete_original_data=False):
+    def write_optimization_results(self, delete_original_data: bool = False) -> None:
+        """
+        Write the optimization results to the database. It will delete the original deadhead trips and write the new
+        :param delete_original_data: if False, the original data will not be deleted and the results will not be written to the database.
+        :return: Nothing. The results will be written to the database.
+        """
 
         if "result" not in self.data:
             raise ValueError("No feasible solution found")
