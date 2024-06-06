@@ -1,0 +1,18 @@
+# This checks whether the code is formatted according to PEP8 standards
+# It does this using the black code formatter
+name: Enforce a minimum code quality standard
+
+on:
+  - pull_request
+  - push
+  - workflow_dispatch
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cclauss/GitHub-Action-for-pylint@0.7.0
+      - run: pip install -r requirements.txt ; pylint --fail-under=8 src/
+
+
