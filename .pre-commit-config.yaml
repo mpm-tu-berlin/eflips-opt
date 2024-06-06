@@ -23,7 +23,7 @@ repos:
       - id: mypy
         exclude: |
           (?x)^(
-              eflips/model/migrations/.*|
+              docs/.*|
               tests/.*
           )$
         args: [ --explicit-package-bases, --ignore-missing-imports ]

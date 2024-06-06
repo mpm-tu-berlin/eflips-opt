@@ -1,0 +1,16 @@
+name: Check Documentation Build
+on:
+  - pull_request
+  - push
+  - workflow_dispatch
+
+
+jobs:
+  build-documentation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: ammaraskar/sphinx-action@master
+      with:
+        docs-folder: "docs/"
+        build-command: "sphinx-build -b html . _build -W -a"

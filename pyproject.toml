@@ -23,10 +23,11 @@ black = "^24.4.2"
 pylint = "^3.2.2"
 pre-commit = "^3.7.1"
 mypy = "^1.7.1"
+sphinx-autoapi = "^3.1.1"
+sphinx-paramlinks = "^0.6.0"
 
 [tool.mypy]
 plugins = "numpy.typing.mypy_plugin"
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
