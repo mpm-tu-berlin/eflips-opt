@@ -97,9 +97,7 @@ class DepotRotationOptimizer:
 
     def get_depot_from_input(self, user_input_depot: List[Dict[str, Any]]):
         """
-
         Get the depot data from the user input, validate and store it in the data attribute.
-
         :param user_input_depot: A dictionary containing the user input for the depot data. It should include the
         following items:
         - station: The station bounded to the depot. It should either be an integer representing station id in the
@@ -271,7 +269,6 @@ class DepotRotationOptimizer:
 
             vehicletype_depot_df[i] = vehicle_type_factors
 
-        # TODO where to set index?
         vehicletype_depot_df.set_index("vehicle_type_id", inplace=True)
         self.data["vehicletype_depot"] = vehicletype_depot_df
 
