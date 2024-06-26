@@ -236,17 +236,19 @@ def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
         - size_factor: The size factor of the vehicle type compared to a standard 12-meter bus
     """
 
-    vehicle_types = (
-        session.query(VehicleType).filter(VehicleType.scenario_id == scenario_id).all()
+    distinct_vehicle_type_ids = (
+        session.query(Rotation.vehicle_type_id).distinct(Rotation.vehicle_type_id).filter(Rotation.scenario_id == scenario_id).all()
     )
-    vehicle_types_id = [v.id for v in vehicle_types]
+    distinct_vehicle_type_ids = [vid[0] for vid in distinct_vehicle_type_ids]
+
+    vehicle_types = session.query(VehicleType).filter(VehicleType.id.in_(distinct_vehicle_type_ids)).all()
     vehicle_types_size = [
         v.length / standard_bus_length if (v.length is not None) else 1.0
         for v in vehicle_types
     ]
 
     vt_df = pd.DataFrame()
-    vt_df["vehicle_type_id"] = vehicle_types_id
+    vt_df["vehicle_type_id"] = distinct_vehicle_type_ids
     vt_df["size_factor"] = vehicle_types_size
     return vt_df
 

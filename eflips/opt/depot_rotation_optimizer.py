@@ -244,7 +244,7 @@ class DepotRotationOptimizer:
         # VehicleType-Depot availability
         total_vehicle_type = self.session.scalars(
             (
-                self.session.query(Rotation).distinct(Rotation.vehicle_type_id).filter(
+                self.session.query(Rotation.vehicle_type_id).distinct(Rotation.vehicle_type_id).filter(
                     Rotation.scenario_id == self.scenario_id
                 )
             )
