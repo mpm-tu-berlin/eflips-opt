@@ -384,7 +384,9 @@ class DepotRotationOptimizer:
             for t in T:
                 occupancy_for_type = 0
                 for i in I:
-                    occupancy_for_type += o[s][i] * v[i, t] * model.x[i, j]
+                    vehicle_is_present = o[s][i] * v[i, t] > 0
+                    if vehicle_is_present:
+                        occupancy_for_type += o[s][i] * v[i, t] * model.x[i, j]
                 occupancy_of_depot += occupancy_for_type * f[j][t]
             return occupancy_of_depot <= n[j]
 
