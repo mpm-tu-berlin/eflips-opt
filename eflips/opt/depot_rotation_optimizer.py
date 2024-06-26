@@ -425,6 +425,9 @@ class DepotRotationOptimizer:
 
         self.data["result"] = new_assign
 
+        # TODO for validation
+        new_assign.to_csv("new_assign.csv")
+
     def write_optimization_results(self, delete_original_data=False):
 
         if "result" not in self.data:
