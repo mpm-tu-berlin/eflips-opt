@@ -380,6 +380,17 @@ class DepotRotationOptimizer:
         # Depot capacity constraint
         @model.Constraint(J, S)
         def depot_capacity_constraint(m, j, s):
+            occupancy_of_depot = 0
+            for t in T:
+                occupancy_for_type = 0
+                for i in I:
+                    occupancy_for_type += o[s][i] * v[i, t] * model.x[i, j]
+                occupancy_of_depot += occupancy_for_type * f[j][t]
+            if occupancy_of_depot > n[j]:
+                return False
+            return True
+
+            # Old version - keep for reference for now
             return (
                 sum(
                     sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[j][t]

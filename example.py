@@ -26,12 +26,12 @@ if __name__ == "__main__":
         user_input_depot = [
             {
                 "depot_station": 103276448,
-                "capacity": 150,
+                "capacity": 200,
                 "vehicle_type": list(range(62, 72)),
             },  # Cicerostraße
             {
                 "depot_station": 103263800,
-                "capacity": 150,
+                "capacity": 200,
                 "vehicle_type": list(range(62, 72)),
             },  # Gorkistr./Ziekowstr.
         ]
