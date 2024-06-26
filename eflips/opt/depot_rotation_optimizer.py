@@ -390,15 +390,6 @@ class DepotRotationOptimizer:
                 occupancy_of_depot += occupancy_for_type * f[j][t]
             return occupancy_of_depot <= n[j]
 
-            # Old version - keep for reference for now
-            return (
-                sum(
-                    sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[j][t]
-                    for t in T
-                )
-                <= n[j]
-            )
-
         # Solve
         try:
             result = pyo.SolverFactory(solver).solve(model, tee=True)
