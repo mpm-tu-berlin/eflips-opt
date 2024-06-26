@@ -1,5 +1,7 @@
 import asyncio
 import pickle
+import urllib.parse
+import posixpath
 from tempfile import gettempdir
 from typing import Tuple, List, Dict, Coroutine, Any
 
@@ -47,7 +49,8 @@ async def deadhead_cost(
     """
 
     base_url = os.environ["BASE_URL"]
-    new_url = os.path.join("v2", service, profile)
+    relative_url = posixpath.join("v2", service, profile)
+    new_url = urllib.parse.urljoin("v2",relative_url)
     if base_url is None:
         raise ValueError("BASE_URL is not set")
 
