@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 
 from eflips.opt.depot_rotation_optimizer import DepotRotationOptimizer
 
-SCENARIO_ID = 10
+SCENARIO_ID = 8
 
 if __name__ == "__main__":
 
@@ -25,35 +25,15 @@ if __name__ == "__main__":
 
         user_input_depot = [
             {
-                "depot_station": 103281393,
-                "capacity": 400,
-                "vehicle_type": [84, 86, 87, 91],
-            },  # Indira-Gandhi-Str
+                "depot_station": 103276448,
+                "capacity": 150,
+                "vehicle_type": list(range(62, 72)),
+            },  # Cicerostraße
             {
-                "depot_station": 103280619,
-                "capacity": 225,
-                "vehicle_type": [82, 84, 85, 87],
-            },  # Britz
-            {
-                "depot_station": 103281456,
-                "capacity": 170,
-                "vehicle_type": [82, 83, 87],
-            },  # Lichtenberg
-            {
-                "depot_station": 103282126,
-                "capacity": 250,
-                "vehicle_type": [82, 84, 85, 87, 90],
-            },  # Cicerostr
-            {
-                "depot_station": 103282127,
-                "capacity": 240,
-                "vehicle_type": [85, 87, 82, 84],
-            },  # Müllerstr
-            {
-                "depot_station": 103282128,
-                "capacity": 290,
-                "vehicle_type": [82, 84, 88],
-            },  # Spandau
+                "depot_station": 103263800,
+                "capacity": 150,
+                "vehicle_type": list(range(62, 72)),
+            },  # Gorkistr./Ziekowstr.
         ]
 
         optimizer.get_depot_from_input(user_input_depot)
