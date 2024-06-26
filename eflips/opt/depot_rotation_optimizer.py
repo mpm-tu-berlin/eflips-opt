@@ -244,8 +244,8 @@ class DepotRotationOptimizer:
         # VehicleType-Depot availability
         total_vehicle_type = self.session.scalars(
             (
-                self.session.query(VehicleType.id).filter(
-                    VehicleType.scenario_id == self.scenario_id
+                self.session.query(Rotation.vehicle_type_id).distinct(Rotation.vehicle_type_id).filter(
+                    Rotation.scenario_id == self.scenario_id
                 )
             )
         ).all()
@@ -380,13 +380,15 @@ class DepotRotationOptimizer:
         # Depot capacity constraint
         @model.Constraint(J, S)
         def depot_capacity_constraint(m, j, s):
-            return (
-                sum(
-                    sum(o[s][i] * v[i, t] * model.x[i, j] for i in I) * f[j][t]
-                    for t in T
-                )
-                <= n[j]
-            )
+            occupancy_of_depot = 0
+            for t in T:
+                occupancy_for_type = 0
+                for i in I:
+                    vehicle_is_present = o[s][i] * v[i, t] > 0
+                    if vehicle_is_present:
+                        occupancy_for_type += o[s][i] * v[i, t] * model.x[i, j]
+                occupancy_of_depot += occupancy_for_type * f[j][t]
+            return occupancy_of_depot <= n[j]
 
         # Solve
         try:
@@ -413,6 +415,9 @@ class DepotRotationOptimizer:
         )
 
         self.data["result"] = new_assign
+
+        # TODO for validation
+        new_assign.to_csv("new_assign.csv")
 
     def write_optimization_results(self, delete_original_data=False):
 

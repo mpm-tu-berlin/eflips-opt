@@ -54,6 +54,18 @@ if __name__ == "__main__":
                 "capacity": 290,
                 "vehicle_type": [82, 84],
             },  # Spandau
+            {
+                "name": "Saentisstr.",
+                "depot_station": (13.385661335581752, 52.41678762604055),
+                "capacity": 230,
+                "vehicle_type": [82, 84, 85, 86, 87, 90],
+            },  # Säntisstr.
+            {
+                "name": "Suedost",
+                "depot_station": (13.497371828836501, 52.46541010322369),
+                "capacity": 260,
+                "vehicle_type": [82, 84, 85, 86, 87, 90],
+            },  # Südost
         ]
 
         optimizer.get_depot_from_input(user_input_depot)
