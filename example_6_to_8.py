@@ -26,32 +26,32 @@ if __name__ == "__main__":
         user_input_depot = [
             {
                 "depot_station": 103281393,
-                "capacity": 400,
+                "capacity": 300,
                 "vehicle_type": [84, 86, 87, 90],
             },  # Indira-Gandhi-Str
             {
                 "depot_station": 103280619,
-                "capacity": 225,
+                "capacity": 140,
                 "vehicle_type": [82, 84, 85, 87],
             },  # Britz
             {
                 "depot_station": 103281456,
-                "capacity": 170,
+                "capacity": 120,
                 "vehicle_type": [82, 84],
             },  # Lichtenberg
             {
                 "depot_station": 103282126,
-                "capacity": 250,
+                "capacity": 209,
                 "vehicle_type": [82, 84, 85],
             },  # Cicerostr
             {
                 "depot_station": 103282127,
-                "capacity": 240,
+                "capacity": 155,
                 "vehicle_type": [82, 84],
             },  # Müllerstr
             {
                 "depot_station": 103282128,
-                "capacity": 290,
+                "capacity": 220,
                 "vehicle_type": [82, 84],
             },  # Spandau
             {
