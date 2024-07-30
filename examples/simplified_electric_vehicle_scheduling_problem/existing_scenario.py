@@ -1,13 +1,17 @@
 import os
-import sqlalchemy
-from sqlalchemy.orm import Session
-from eflips.model import Scenario, VehicleType
-
-from eflips.opt.simplified_electric_vehicle_scheduling import passenger_trips_by_vehicle_type, \
-    minimum_path_cover_rotation_plan, soc_aware_rotation_plan, visualize_with_dash_cytoscape, efficiency_info, \
-    create_graph_of_possible_connections
 
 import networkx as nx
+import sqlalchemy
+from eflips.model import Scenario
+from sqlalchemy.orm import Session
+
+from eflips.opt.simplified_electric_vehicle_scheduling import (
+    passenger_trips_by_vehicle_type,
+    minimum_path_cover_rotation_plan,
+    soc_aware_rotation_plan,
+    efficiency_info,
+    create_graph_of_possible_connections,
+)
 
 if __name__ == "__main__":
     if "DATABASE_URL" not in os.environ:
