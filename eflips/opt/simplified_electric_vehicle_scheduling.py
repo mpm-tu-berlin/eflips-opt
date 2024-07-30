@@ -17,11 +17,11 @@ import logging
 import os
 from datetime import timedelta
 from multiprocessing import Pool
-from typing import List, Dict, FrozenSet
+from typing import List, Dict, FrozenSet, Tuple
 
-import dash
-import dash_cytoscape as cyto
-import networkx as nx
+import dash # type: ignore
+import dash_cytoscape as cyto # type: ignore
+import networkx as nx # type: ignore
 import numpy as np
 import sqlalchemy.orm.session
 from dash import html
@@ -51,7 +51,7 @@ def passenger_trips_by_vehicle_type(
     vehicle_types = (
         session.query(VehicleType).filter(VehicleType.scenario == scenario).all()
     )
-    passenger_trips_by_vehicle_type = {
+    passenger_trips_by_vehicle_type: Dict[VehicleType, List[Trip]] = {
         vehicle_type: [] for vehicle_type in vehicle_types
     }
 
@@ -128,7 +128,7 @@ def create_graph_of_possible_connections(
         for trip in trips:
             # Calculate the energy consumption of the trip
             if trip.route.arrival_station.is_electrified:
-                delta_soc = 0  # We can recharge at the arrival station
+                delta_soc = 0.0  # We can recharge at the arrival station
             else:
                 vt = trip.rotation.vehicle_type
                 distance = trip.route.distance / 1000  # Convert to km
@@ -193,14 +193,14 @@ def create_graph_of_possible_connections(
     return graph
 
 
-def compare_graphs(orig: nx.Graph, new: nx.Graph):
+def compare_graphs(orig: nx.Graph, new: nx.Graph) -> None:
     """
     Print out information about the differences between two graphs. Specifically, we print out the edges that are in
     the original graph but not in the new graph, and the edges that are in the new graph but not in the original graph.
 
     :param orig: A graph
     :param new: A graph
-    :return:
+    :return: Nothing
     """
 
     # Find the edges that differ between the two graphs, and color them specially
@@ -239,7 +239,7 @@ def minimum_path_cover_rotation_plan(graph: nx.Graph) -> nx.Graph:
     :return: A graph containing the minimum path cover of the original graph.
     """
     logger = logging.getLogger(__name__)
-    rotations = []
+    rotations: List[List[int]] = []
 
     logger.info(
         f"Graph is composed is {len(graph.nodes)} nodes and {len(graph.edges)} edges"
@@ -266,7 +266,7 @@ def minimum_path_cover_rotation_plan(graph: nx.Graph) -> nx.Graph:
         bipartite_graph.add_node(f"{node}_out", color="red", bipartite=1)
 
     for edge in graph.edges:
-        bipartite_graph.add_edge(f"{edge[0]}_out", f"{edge[1]}_in")
+        bipartite_graph.add_edge(f"{edge[0]}_out", f"{edge[1]}_in", weight=graph.edges[edge]["wait_time"])
 
     assert nx.is_directed_acyclic_graph(bipartite_graph)
     assert nx.is_bipartite(bipartite_graph)
@@ -285,6 +285,13 @@ def minimum_path_cover_rotation_plan(graph: nx.Graph) -> nx.Graph:
             continue
         subgraph = bipartite_graph.subgraph(sub_nodes)
         matching = nx.bipartite.hopcroft_karp_matching(subgraph)
+
+        # If a full matching exists, calculate the minimum weight full matching
+        try:
+            matching = nx.bipartite.minimum_weight_full_matching(subgraph, weight="weight")
+        except ValueError:
+            pass
+
         for entry in matching:
             if "_out" in entry:
                 start_node = int(entry.split("_")[0])
@@ -315,7 +322,7 @@ def _effects_of_removal(
     :return: A dictionary containing the effects of removing the nodes
     """
 
-    effects_of_removal: Dict[List[int], Dict[str, float | int]] = {}
+    effects_of_removal: Dict[Tuple[int], Dict[str, float | int]] = {}
 
     # Get the node list in the correct order
     sub_subgraph = graph.subgraph(rotation).copy()
@@ -346,7 +353,6 @@ def _effects_of_removal(
             )
         ]
     )
-
     effects_of_removal[tuple(forward_node_list)] = {
         "rotation_count": rotation_count_forward_nodes_removed,
         "max_energy": max_energy_forward_nodes_removed,
@@ -558,10 +564,10 @@ def efficiency_info(
         original_efficiencies.append(driving_duration / total_duration)
 
     print(
-        f"Original efficiency: {np.mean(original_efficiencies):.2f} with {len(original_efficiencies)} rotations"
+        f"Original efficiency: {np.mean(original_efficiencies):.3f} with {len(original_efficiencies)} rotations"
     )
     print(
-        f"New efficiency: {np.mean(new_efficiencies):.2f} with {len(new_efficiencies)} rotations"
+        f"New efficiency: {np.mean(new_efficiencies):.3f} with {len(new_efficiencies)} rotations"
     )
 
 def write_back_rotation_plan(rot_graph: nx.Graph, session: sqlalchemy.orm.session.Session) -> None:
