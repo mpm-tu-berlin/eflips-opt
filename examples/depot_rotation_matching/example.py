@@ -3,7 +3,7 @@ import os
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 
-from eflips.opt.depot_rotation_optimizer import DepotRotationOptimizer
+from eflips.opt.depot_rotation_matching import DepotRotationOptimizer
 
 SCENARIO_ID = 10
 

@@ -50,7 +50,7 @@ async def deadhead_cost(
 
     base_url = os.environ["BASE_URL"]
     relative_url = posixpath.join("v2", service, profile)
-    new_url = urllib.parse.urljoin("v2",relative_url)
+    new_url = urllib.parse.urljoin("v2", relative_url)
     if base_url is None:
         raise ValueError("BASE_URL is not set")
 
@@ -240,11 +240,18 @@ def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     """
 
     distinct_vehicle_type_ids = (
-        session.query(Rotation.vehicle_type_id).distinct(Rotation.vehicle_type_id).filter(Rotation.scenario_id == scenario_id).all()
+        session.query(Rotation.vehicle_type_id)
+        .distinct(Rotation.vehicle_type_id)
+        .filter(Rotation.scenario_id == scenario_id)
+        .all()
     )
     distinct_vehicle_type_ids = [vid[0] for vid in distinct_vehicle_type_ids]
 
-    vehicle_types = session.query(VehicleType).filter(VehicleType.id.in_(distinct_vehicle_type_ids)).all()
+    vehicle_types = (
+        session.query(VehicleType)
+        .filter(VehicleType.id.in_(distinct_vehicle_type_ids))
+        .all()
+    )
     vehicle_types_size = [
         v.length / standard_bus_length if (v.length is not None) else 1.0
         for v in vehicle_types
