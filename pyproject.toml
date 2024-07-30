@@ -17,6 +17,7 @@ pyomo = "^6.7.1"
 numpy = "^1.26.4"
 plotly = "^5.22.0"
 networkx = "^3.3"
+scipy = "^1.14.0"
 
 [tool.poetry.group.dev.dependencies]
 pandas-stubs = "^2.2.2.240603"
