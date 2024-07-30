@@ -4,16 +4,18 @@ import os
 import warnings
 from datetime import timedelta
 
-import openrouteservice
+import openrouteservice # type: ignore
 
 from typing import Dict, Any, List, Tuple
+
+import sqlalchemy.orm.session
 from geoalchemy2.shape import to_shape
 import pandas as pd
 
-import pyomo.environ as pyo
-from pyomo.common.timing import report_timing
+import pyomo.environ as pyo # type: ignore
+from pyomo.common.timing import report_timing # type: ignore
 
-import plotly.graph_objects as go
+import plotly.graph_objects as go # type: ignore
 
 from eflips.model import (
     Rotation,
@@ -37,12 +39,12 @@ from eflips.opt.util import (
 
 
 class DepotRotationOptimizer:
-    def __init__(self, session, scenario_id):
+    def __init__(self, session: sqlalchemy.orm.session.Session, scenario_id: int) -> None:
         self.session = session
         self.scenario_id = scenario_id
-        self.data = {}
+        self.data: Dict[str, List[Dict[str, int | List[int] | Tuple[float, float]]] | pd.DataFrame] = {}
 
-    def _delete_original_data(self):
+    def _delete_original_data(self) -> None:
         """
         Delete the original deadhead trips from the database, which are determined by the first and the last empty
         trips of each rotation. It is called by :meth:`write_optimization_results` method and must be executed before
@@ -95,7 +97,7 @@ class DepotRotationOptimizer:
 
         self.session.flush()
 
-    def get_depot_from_input(self, user_input_depot: List[Dict[str, Any]]):
+    def get_depot_from_input(self, user_input_depot: List[Dict[str, int | List[int] | Tuple[float, float]]]) -> None:
         """
 
         Get the depot data from the user input, validate and store it in the data attribute.
@@ -178,15 +180,15 @@ class DepotRotationOptimizer:
             .all()
         )
 
-        for vt in all_demanded_types:
-            if vt[0] not in all_vehicle_types:
+        for vt in [vt.vehicle_type_id for vt in all_demanded_types]:
+            if vt not in all_vehicle_types:
                 raise ValueError(
                     "Not all demanded vehicle types are available in all depots"
                 )
 
         self.data["depot_from_user"] = user_input_depot
 
-    def data_preparation(self):
+    def data_preparation(self) -> None:
         """
         Prepare the data for the optimization problem and store them into self.data. All the data are in :class:`pandas.DataFrame` format.
         The data includes:
@@ -204,6 +206,7 @@ class DepotRotationOptimizer:
 
         # depot
         depot_input = self.data["depot_from_user"]
+        assert isinstance(depot_input, list), "Depot input should be a list"
         # station
         station_coords = []
         capacities = []
@@ -225,6 +228,9 @@ class DepotRotationOptimizer:
 
                 station_coords.append((point.x, point.y))
             else:
+                assert isinstance(depot["depot_station"], tuple) and len(depot["depot_station"]) == 2 and all(
+                    isinstance(coord, float) for coord in depot["depot_station"]
+                ), "Depot station should be a tuple of 2 floats"
                 station_coords.append(depot["depot_station"])
                 names.append(depot["name"])
 
@@ -255,12 +261,15 @@ class DepotRotationOptimizer:
         for i in range(len(depot_input)):
             vehicle_type_factors = []
             for v in total_vehicle_type:
-                if v in depot_input[i]["vehicle_type"]:
+                assert isinstance(depot_input[i]["vehicle_type"], list), "Vehicle type should be a list of integers"
+                assert all(isinstance(vt, int) for vt in depot_input[i]["vehicle_type"]), "Vehicle type should be a list of integers" #type: ignore
+                if v in depot_input[i]["vehicle_type"]: #type: ignore
                     vehicle_type = (
                         self.session.query(VehicleType)
                         .filter(VehicleType.id == v)
                         .first()
                     )
+                    assert vehicle_type is not None, f"Vehicle type {v} not found"
                     if vehicle_type.length is None:
                         vehicle_type_factors.append(1.0)
                     else:
@@ -309,7 +318,7 @@ class DepotRotationOptimizer:
         cost_df["cost"] = deadhead_costs
         self.data["cost"] = cost_df
 
-    def optimize(self, cost="distance", time_report=False, solver="gurobi"):
+    def optimize(self, cost: str="distance", time_report: bool=False, solver: str="gurobi") -> None:
         """
         Optimize the depot rotation assignment problem and store the results in the data attribute.
         :param cost: the cost to be optimized. It can be either "distance" or "duration" for now with the default value of "distance".
@@ -321,24 +330,27 @@ class DepotRotationOptimizer:
         """
         # Building model in pyomo
         # i for rotations
-        I = self.data["rotation"]["rotation_id"].tolist()
+        I = self.data["rotation"]["rotation_id"].tolist() #type: ignore
         # j for depots
-        J = self.data["depot"]["depot_id"].tolist()
+        J = self.data["depot"]["depot_id"].tolist() #type: ignore
         # t for vehicle types
-        T = self.data["vehicle_type"]["vehicle_type_id"].tolist()
+        T = self.data["vehicle_type"]["vehicle_type_id"].tolist() #type: ignore
         # s for time slots
-        S = self.data["occupancy"].columns.values.tolist()
+        S = self.data["occupancy"].columns.values.tolist() #type: ignore
         S = [int(i) for i in S]
 
         # n_j: depot-vehicle type capacity
         depot = self.data["depot"]
+        assert isinstance(depot, pd.DataFrame), "Depot data should be a DataFrame"
         n = depot.set_index("depot_id").to_dict()["capacity"]
 
         # f_jt: vehicle size factor for each depot. if a vehicle type is unavailable in a depot, the factor will be
         # the same as the depot capacity
+        assert isinstance(self.data["vehicletype_depot"], pd.DataFrame), "Vehicle type depot data should be a DataFrame"
         f = self.data["vehicletype_depot"].to_dict()
 
         # v_it: rotation-type
+        assert isinstance(self.data["assignment"], pd.DataFrame), "Assignment data should be a DataFrame"
         v = (
             self.data["assignment"]
             .set_index(["rotation_id", "vehicle_type_id"])
@@ -346,12 +358,13 @@ class DepotRotationOptimizer:
         )
 
         # c_ij: rotation-depot cost
+        assert isinstance(self.data["cost"], pd.DataFrame), "Cost data should be a DataFrame"
         c = self.data["cost"].set_index(["rotation_id", "depot_id"]).to_dict()["cost"]
 
         # o_si: rotation-time slot occupancy
-
+        assert isinstance(self.data["occupancy"], pd.DataFrame), "Occupancy data should be a DataFrame"
         o = self.data["occupancy"].to_dict()
-        o = {int(k): v for k, v in o.items()}
+        o = {int(k): v for k, v in o.items()} #type: ignore
 
         print("data acquired")
 
@@ -364,7 +377,7 @@ class DepotRotationOptimizer:
 
         # Objective function
         @model.Objective()
-        def obj(m):
+        def obj(m): #type: ignore
             return sum(
                 (c[i, j][cost][0] + c[i, j][cost][1]) * model.x[i, j]
                 for i in I
@@ -374,12 +387,12 @@ class DepotRotationOptimizer:
         # Constraints
         # Each rotation is assigned to exactly one depot
         @model.Constraint(I)
-        def one_depot_per_rot(m, i):
+        def one_depot_per_rot(m, i): #type: ignore
             return sum(model.x[i, j] for j in J) == 1
 
         # Depot capacity constraint
         @model.Constraint(J, S)
-        def depot_capacity_constraint(m, j, s):
+        def depot_capacity_constraint(m, j, s): #type: ignore
             occupancy_of_depot = 0
             for t in T:
                 occupancy_for_type = 0
@@ -412,7 +425,7 @@ class DepotRotationOptimizer:
         # TODO for validation
         new_assign.to_csv("new_assign.csv")
 
-    def write_optimization_results(self, delete_original_data=False):
+    def write_optimization_results(self, delete_original_data: bool=False) -> None:
 
         if "result" not in self.data:
             raise ValueError("No feasible solution found")
@@ -426,8 +439,9 @@ class DepotRotationOptimizer:
 
         # Write new depot as stations
         depot_from_user = self.data["depot_from_user"]
+        assert isinstance(depot_from_user, list), "Depot data should be a list"
         for depot in depot_from_user:
-            if isinstance(depot["depot_station"], Tuple):
+            if isinstance(depot["depot_station"], tuple):
                 new_depot_station = Station(
                     name=depot["name"],
                     scenario_id=self.scenario_id,
@@ -440,26 +454,29 @@ class DepotRotationOptimizer:
         new_assign = self.data["result"]
         cost = self.data["cost"]
 
+        assert isinstance(new_assign, pd.DataFrame), "Result data should be a DataFrame"
         for row in new_assign.itertuples():
 
             # Add depot if it is a new depot, else get the depot station id
-            if isinstance(depot_from_user[row.new_depot_id]["depot_station"], Tuple):
+            if isinstance(depot_from_user[row.new_depot_id]["depot_station"], Tuple): #type: ignore
                 # newly added depot
-                depot_name = depot_from_user[row.new_depot_id]["name"]
+                depot_name = depot_from_user[row.new_depot_id]["name"] #type: ignore
                 depot_station = (
                     self.session.query(Station)
                     .filter(Station.name == depot_name)
                     .first()
                 )
             else:
-                depot_station_id = depot_from_user[row.new_depot_id]["depot_station"]
+                depot_station_id = depot_from_user[row.new_depot_id]["depot_station"] #type: ignore
                 depot_station = (
                     self.session.query(Station)
                     .filter(Station.id == depot_station_id)
                     .first()
                 )
-                depot_name = depot_station.name
+                assert depot_station is not None, "Depot station not found"
+                depot_name = depot_station.name #type: ignore
 
+            assert isinstance(cost, pd.DataFrame), "Cost data should be a DataFrame"
             route_cost = cost.loc[
                 (cost["rotation_id"] == row.rotation_id)
                 & (cost["depot_id"] == row.new_depot_id)
@@ -481,7 +498,7 @@ class DepotRotationOptimizer:
             ferry_route = (
                 self.session.query(Route)
                 .filter(
-                    Route.departure_station_id == depot_station.id,
+                    Route.departure_station_id == depot_station.id, #type: ignore
                     Route.arrival_station_id == first_trip.route.departure_station_id,
                 )
                 .all()
@@ -567,7 +584,7 @@ class DepotRotationOptimizer:
                 self.session.query(Route)
                 .filter(
                     Route.departure_station_id == last_trip.route.arrival_station_id,
-                    Route.arrival_station_id == depot_station.id,
+                    Route.arrival_station_id == depot_station.id,  #type: ignore
                 )
                 .all()
             )
@@ -656,23 +673,27 @@ class DepotRotationOptimizer:
         depot_df = self.data["depot"]
         orig_assign = self.data["orig_assign"]
 
-        orig_depot_stations = list(set(orig_assign["orig_depot_station"].tolist()))
+        orig_depot_stations = list(set(orig_assign["orig_depot_station"].tolist())) #type: ignore
         old_depot_names = []
         for orig_depot_station in orig_depot_stations:
-            depot_station_name = (
+            depot_station_q = (
                 self.session.query(Station.name)
                 .filter(Station.id == orig_depot_station)
-                .first()[0]
+                .first()
             )
+            assert depot_station_q is not None, "Depot station not found"
+            depot_station_name = depot_station_q[0]
             old_depot_names.append("From " + depot_station_name)
 
-        new_depot_ids = depot_df["depot_id"].tolist()
-        new_depot_names = depot_df["name"].tolist()
+        new_depot_ids = depot_df["depot_id"].tolist() #type: ignore
+        new_depot_names = depot_df["name"].tolist() #type: ignore
 
         source = []
         target = []
         value = []
 
+        assert isinstance(orig_assign, pd.DataFrame), "Original data should be a DataFrame"
+        assert isinstance(new_assign, pd.DataFrame), "Result data should be a DataFrame"
         diff = orig_assign.merge(new_assign, how="outer", on="rotation_id")
 
         for key in itertools.product(orig_depot_stations, new_depot_ids):
