@@ -551,12 +551,14 @@ def efficiency_info(
     )
 
     for rotation in old_rotations:
-        # Assume that the first and last trip are empty trips
+        trip_list = [trip for trip in rotation.trips if trip.trip_type == TripType.PASSENGER]
         total_duration = (
-            rotation.trips[-2].arrival_time - rotation.trips[1].departure_time
+            trip_list[-1].arrival_time - trip_list[0].departure_time
         ).seconds / 60
+        if total_duration == 0:
+            continue
         driving_duration = 0
-        for trip in rotation.trips[1:-1]:
+        for trip in trip_list:
             driving_duration += (trip.arrival_time - trip.departure_time).seconds / 60
         original_efficiencies.append(driving_duration / total_duration)
 
