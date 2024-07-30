@@ -19,9 +19,9 @@ from datetime import timedelta
 from multiprocessing import Pool
 from typing import List, Dict, FrozenSet, Tuple
 
-import dash # type: ignore
-import dash_cytoscape as cyto # type: ignore
-import networkx as nx # type: ignore
+import dash  # type: ignore
+import dash_cytoscape as cyto  # type: ignore
+import networkx as nx  # type: ignore
 import numpy as np
 import sqlalchemy.orm.session
 from dash import html
@@ -165,7 +165,7 @@ def create_graph_of_possible_connections(
                             wait_time=int(
                                 (
                                     following_trip.departure_time - trip.arrival_time
-                                ).seconds
+                                ).total_seconds()
                             ),
                         )
                 # If we have not added any edge, allow one edge up to 60 minutes
@@ -185,7 +185,7 @@ def create_graph_of_possible_connections(
                                     (
                                         following_trip.departure_time
                                         - trip.arrival_time
-                                    ).seconds
+                                    ).total_seconds()
                                 ),
                             )
                             break
@@ -266,7 +266,9 @@ def minimum_path_cover_rotation_plan(graph: nx.Graph) -> nx.Graph:
         bipartite_graph.add_node(f"{node}_out", color="red", bipartite=1)
 
     for edge in graph.edges:
-        bipartite_graph.add_edge(f"{edge[0]}_out", f"{edge[1]}_in", weight=graph.edges[edge]["wait_time"])
+        bipartite_graph.add_edge(
+            f"{edge[0]}_out", f"{edge[1]}_in", weight=graph.edges[edge]["wait_time"]
+        )
 
     assert nx.is_directed_acyclic_graph(bipartite_graph)
     assert nx.is_bipartite(bipartite_graph)
@@ -288,7 +290,9 @@ def minimum_path_cover_rotation_plan(graph: nx.Graph) -> nx.Graph:
 
         # If a full matching exists, calculate the minimum weight full matching
         try:
-            matching = nx.bipartite.minimum_weight_full_matching(subgraph, weight="weight")
+            matching = nx.bipartite.minimum_weight_full_matching(
+                subgraph, weight="weight"
+            )
         except ValueError:
             pass
 
@@ -419,7 +423,7 @@ def soc_aware_rotation_plan(
         if "delta_soc" not in graph.nodes[node]:
             raise ValueError("All nodes must have the delta_soc attribute")
 
-    finished_trips: List[List[int] |Tuple[int]] = []
+    finished_trips: List[List[int] | Tuple[int]] = []
     for set_of_nodes in nx.connected_components(graph.to_undirected()):
         subgraph = graph.subgraph(set_of_nodes).copy()
 
@@ -537,11 +541,13 @@ def efficiency_info(
             .filter(Trip.id == new_rotation[0])
             .one()
             .departure_time
-        ).seconds / 60
+        ).total_seconds() / 60
         driving_duration = 0.0
         for trip_id in new_rotation:
             trip = session.query(Trip).filter(Trip.id == trip_id).one()
-            driving_duration += (trip.arrival_time - trip.departure_time).seconds / 60
+            driving_duration += (
+                trip.arrival_time - trip.departure_time
+            ).total_seconds() / 60
         new_efficiencies.append(driving_duration / total_duration)
 
     # Find all rotations containing one of the new trips
@@ -551,15 +557,19 @@ def efficiency_info(
     )
 
     for rotation in old_rotations:
-        trip_list = [trip for trip in rotation.trips if trip.trip_type == TripType.PASSENGER]
+        trip_list = [
+            trip for trip in rotation.trips if trip.trip_type == TripType.PASSENGER
+        ]
         total_duration = (
             trip_list[-1].arrival_time - trip_list[0].departure_time
-        ).seconds / 60
+        ).total_seconds() / 60
         if total_duration == 0:
             continue
         driving_duration = 0
         for trip in trip_list:
-            driving_duration += (trip.arrival_time - trip.departure_time).seconds / 60
+            driving_duration += (
+                trip.arrival_time - trip.departure_time
+            ).total_seconds() / 60
         original_efficiencies.append(driving_duration / total_duration)
 
     print(
@@ -569,7 +579,10 @@ def efficiency_info(
         f"New efficiency: {np.mean(new_efficiencies):.3f} with {len(new_efficiencies)} rotations"
     )
 
-def write_back_rotation_plan(rot_graph: nx.Graph, session: sqlalchemy.orm.session.Session) -> None:
+
+def write_back_rotation_plan(
+    rot_graph: nx.Graph, session: sqlalchemy.orm.session.Session
+) -> None:
     """
     Deletes the original rotations and writes back the new rotations to the database. This is useful when the new
     rotations are better than the original rotations.
@@ -579,7 +592,9 @@ def write_back_rotation_plan(rot_graph: nx.Graph, session: sqlalchemy.orm.sessio
     :return: Nothing. The new rotations are written to the database.
     """
     # Find the original rotations
-    rotations = session.query(Rotation).join(Trip).filter(Trip.id.in_(rot_graph.nodes)).all()
+    rotations = (
+        session.query(Rotation).join(Trip).filter(Trip.id.in_(rot_graph.nodes)).all()
+    )
 
     # Delete all empty trips that are part of the rotations
     for rotation in rotations:
@@ -593,27 +608,32 @@ def write_back_rotation_plan(rot_graph: nx.Graph, session: sqlalchemy.orm.sessio
     with session.no_autoflush:
         for rotation in rotations:
             for trip in rotation.trips:
-                trip.rotation = None # type: ignore
-                trip.rotation_id = None # type: ignore
+                trip.rotation = None  # type: ignore
+                trip.rotation_id = None  # type: ignore
             session.delete(rotation)
 
         # Make sure the rotation ids and vehicle type ids are the same
         vehicle_type_id = rotations[0].vehicle_type_id
-        assert all(rotation.vehicle_type_id == vehicle_type_id for rotation in rotations)
+        assert all(
+            rotation.vehicle_type_id == vehicle_type_id for rotation in rotations
+        )
         scenario_id = rotations[0].scenario_id
         assert all(rotation.scenario_id == scenario_id for rotation in rotations)
 
         for set_of_nodes in nx.connected_components(rot_graph.to_undirected()):
-            rotation = Rotation(scenario_id=scenario_id,
-                                vehicle_type_id=vehicle_type_id,
-                                allow_opportunity_charging=True,
-                                name=None,
-                                )
+            rotation = Rotation(
+                scenario_id=scenario_id,
+                vehicle_type_id=vehicle_type_id,
+                allow_opportunity_charging=True,
+                name=None,
+            )
             for node in set_of_nodes:
                 trip = session.query(Trip).filter(Trip.id == node).one()
                 trip.rotation = rotation
             # Sort the rotation's trips by departure time
-            rotation.trips = sorted(rotation.trips, key=lambda trip: trip.departure_time)
+            rotation.trips = sorted(
+                rotation.trips, key=lambda trip: trip.departure_time
+            )
         session.flush()
 
 
