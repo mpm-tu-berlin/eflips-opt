@@ -311,7 +311,7 @@ def minimum_path_cover_rotation_plan(graph: nx.Graph) -> nx.Graph:
 
 def _effects_of_removal(
     rotation: FrozenSet[int], graph: nx.DiGraph, soc_reserve: float
-) -> Dict[List[int], Dict[str, float | int]]:
+) -> Dict[Tuple[int], Dict[str, float | int]]:
     """
     Private function to calculate the effects of removing a set of nodes from the graph. This is used in the
     soc_aware_rotation_plan function.
@@ -419,7 +419,7 @@ def soc_aware_rotation_plan(
         if "delta_soc" not in graph.nodes[node]:
             raise ValueError("All nodes must have the delta_soc attribute")
 
-    finished_trips: List[List[int]] = []
+    finished_trips: List[List[int] |Tuple[int]] = []
     for set_of_nodes in nx.connected_components(graph.to_undirected()):
         subgraph = graph.subgraph(set_of_nodes).copy()
 
@@ -436,9 +436,6 @@ def soc_aware_rotation_plan(
                     graph.nodes[node]["delta_soc"] for node in rotation_set_of_nodes
                 )
                 energy_consumption[frozenset(rotation_set_of_nodes)] = rotation_energy
-
-            # Find the rotation with the highest energy consumption
-            max_rotation = max(energy_consumption, key=energy_consumption.get)
 
             if max(energy_consumption.values()) <= (1 - soc_reserve):
                 break
@@ -461,7 +458,7 @@ def soc_aware_rotation_plan(
                 if energy_consumption[rotation] > (1 - soc_reserve)
             ]
 
-            effects_of_removal: Dict[List[int], Dict[str, float | int]] = {}
+            effects_of_removal: Dict[Tuple[int], Dict[str, float | int]] = {}
 
             if parallelism:
                 pool_args = []
@@ -522,7 +519,7 @@ def soc_aware_rotation_plan(
 
 def efficiency_info(
     new_trips: List[List[int]], session: sqlalchemy.orm.session.Session
-):
+) -> None:
     """
     Calculate the efficiency of the original rotations and the new rotations. Efficiency is defined as the time spent
     driving divided by the total time spent in the rotation.
@@ -541,7 +538,7 @@ def efficiency_info(
             .one()
             .departure_time
         ).seconds / 60
-        driving_duration = 0
+        driving_duration = 0.0
         for trip_id in new_rotation:
             trip = session.query(Trip).filter(Trip.id == trip_id).one()
             driving_duration += (trip.arrival_time - trip.departure_time).seconds / 60
@@ -594,8 +591,8 @@ def write_back_rotation_plan(rot_graph: nx.Graph, session: sqlalchemy.orm.sessio
     with session.no_autoflush:
         for rotation in rotations:
             for trip in rotation.trips:
-                trip.rotation = None
-                trip.rotation_id = None
+                trip.rotation = None # type: ignore
+                trip.rotation_id = None # type: ignore
             session.delete(rotation)
 
         # Make sure the rotation ids and vehicle type ids are the same
