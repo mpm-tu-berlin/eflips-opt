@@ -29,7 +29,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from eflips.opt.depot_rotation_optimizer import DepotRotationOptimizer
+from eflips.opt.depot_rotation_matching import DepotRotationOptimizer
 
 
 class TestHelpers:

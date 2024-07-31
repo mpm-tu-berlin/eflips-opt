@@ -3,16 +3,16 @@ import os
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 
-from eflips.opt.depot_rotation_optimizer import DepotRotationOptimizer
+from eflips.opt.depot_rotation_matching import DepotRotationOptimizer
 
 SCENARIO_ID = 10
 
 if __name__ == "__main__":
 
     if (
-            "DATABASE_URL" not in os.environ
-            or os.environ["DATABASE_URL"] is None
-            or os.environ["DATABASE_URL"] == ""
+        "DATABASE_URL" not in os.environ
+        or os.environ["DATABASE_URL"] is None
+        or os.environ["DATABASE_URL"] == ""
     ):
         raise ValueError(
             "The database url must be specified either as an argument or as the environment variable DATABASE_URL."

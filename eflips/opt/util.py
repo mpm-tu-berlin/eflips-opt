@@ -3,11 +3,12 @@ import pickle
 import urllib.parse
 import posixpath
 from tempfile import gettempdir
-from typing import Tuple, List, Dict, Coroutine, Any
+from typing import Tuple, List, Dict, Coroutine, Any, Awaitable
 
 import os
 
-import openrouteservice
+import openrouteservice # type: ignore
+import sqlalchemy.orm.session
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -30,11 +31,11 @@ async def deadhead_cost(
     point_start: Tuple[float, float],
     point_end: Tuple[float, float],
     point_depot: Tuple[float, float],
-    client,
-    profile="driving-car",
-    service="directions",
-    data_format="geojson",
-):
+    client: openrouteservice.Client,
+    profile: str="driving-car",
+    service: str="directions",
+    data_format: str="geojson",
+) -> Dict[str, Tuple[float, float]]:
     """
     Calculate the cost between two points using the openrouteservice API
 
@@ -46,11 +47,13 @@ async def deadhead_cost(
     :param profile: Profile to use, default is driving-car
     :param service: Service to use, default is directions
     :param data_format: Data format to use, default is geojson
+
+    :return: A dictionary with the distance and duration between the two points
     """
 
     base_url = os.environ["BASE_URL"]
     relative_url = posixpath.join("v2", service, profile)
-    new_url = urllib.parse.urljoin("v2",relative_url)
+    new_url = urllib.parse.urljoin("v2", relative_url)
     if base_url is None:
         raise ValueError("BASE_URL is not set")
 
@@ -97,10 +100,15 @@ async def deadhead_cost(
 
 async def calculate_deadhead_costs(
     df: pd.DataFrame, client: openrouteservice.Client
-) -> List[Coroutine]:
+) -> List[Coroutine[Awaitable[Dict[str, Tuple[float, float]]], Any, Any]]:
     # Asynchronously compute deadhead cost
-    deadhead_costs: List[Coroutine | Any] = []
+    deadhead_costs: List[Coroutine[Awaitable[Dict[str, Tuple[float, float]]], Any, Any]] = []
     for row in df.itertuples():
+        # Make mypy happy
+        assert isinstance(row.start_station_coord, tuple) and len(row.start_station_coord) == 2 and all([isinstance(x, float) for x in row.start_station_coord])
+        assert isinstance(row.end_station_coord, tuple) and len(row.end_station_coord) == 2 and all([isinstance(x, float) for x in row.end_station_coord])
+        assert isinstance(row.depot_station, tuple) and len(row.depot_station) == 2 and all([isinstance(x, float) for x in row.depot_station])
+
         cost_promise = deadhead_cost(
             row.start_station_coord, row.end_station_coord, row.depot_station, client
         )
@@ -111,7 +119,7 @@ async def calculate_deadhead_costs(
     return deadhead_costs
 
 
-def get_depot_rot_assign(session, scenario_id):
+def get_depot_rot_assign(session: sqlalchemy.orm.session.Session, scenario_id: int) -> pd.DataFrame:
     data = []
 
     rotation_ids = (
@@ -204,7 +212,7 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
     return rotation_df
 
 
-def depot_data(session, scenario_id):
+def depot_data(session: sqlalchemy.orm.session.Session, scenario_id: int) -> pd.DataFrame:
     """
 
     :param session:
@@ -227,7 +235,7 @@ def depot_data(session, scenario_id):
     return depot_df
 
 
-def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
+def get_vehicletype(session: sqlalchemy.orm.session.Session, scenario_id: int, standard_bus_length: float=12.0) -> pd.DataFrame:
     """
     This function takes the session and scenario_id and returns the vehicle types and there size factors compared to a
     normal 12-meter bus
@@ -240,11 +248,18 @@ def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     """
 
     distinct_vehicle_type_ids = (
-        session.query(Rotation.vehicle_type_id).distinct(Rotation.vehicle_type_id).filter(Rotation.scenario_id == scenario_id).all()
+        session.query(Rotation.vehicle_type_id)
+        .distinct(Rotation.vehicle_type_id)
+        .filter(Rotation.scenario_id == scenario_id)
+        .all()
     )
     distinct_vehicle_type_ids = [vid[0] for vid in distinct_vehicle_type_ids]
 
-    vehicle_types = session.query(VehicleType).filter(VehicleType.id.in_(distinct_vehicle_type_ids)).all()
+    vehicle_types = (
+        session.query(VehicleType)
+        .filter(VehicleType.id.in_(distinct_vehicle_type_ids))
+        .all()
+    )
     vehicle_types_size = [
         v.length / standard_bus_length if (v.length is not None) else 1.0
         for v in vehicle_types
@@ -256,7 +271,7 @@ def get_vehicletype(session, scenario_id, standard_bus_length=12.0):
     return vt_df
 
 
-def get_rotation_vehicle_assign(session, scenario_id):
+def get_rotation_vehicle_assign(session: sqlalchemy.orm.session.Session, scenario_id: int) -> pd.DataFrame:
     """
 
     :param session:
@@ -364,5 +379,5 @@ def get_occupancy(
             f"check if the time window is too large."
         )
 
-    occupancy = pd.DataFrame(occupancy, columns=sampled_time_stamp, index=rotation_ids)
-    return occupancy
+    occupancy_df = pd.DataFrame(occupancy, columns=sampled_time_stamp, index=rotation_ids)
+    return occupancy_df

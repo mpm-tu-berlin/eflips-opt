@@ -8,16 +8,17 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-eflips-model = ">=3.0.0, <5.0.0"
-sqlalchemy = "^2.0.28"
+eflips-model = ">=3.0.0, <6.0.0"
 pandas = "^2.1"
-geoalchemy2 = "^0.14.6"
 shapely = "^2.0.3"
 openrouteservice = "^2.3.3"
 gurobipy = "^11.0.1"
 pyomo = "^6.7.1"
 numpy = "^1.26.4"
 plotly = "^5.22.0"
+
+[tool.poetry.group.dev.dependencies]
+pandas-stubs = "^2.2.2.240603"
 pytest = "^8.2.1"
 black = "^24.4.2"
 pylint = "^3.2.2"
