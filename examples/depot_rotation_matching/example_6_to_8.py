@@ -26,52 +26,52 @@ if __name__ == "__main__":
         user_input_depot = [
             {
                 "depot_station": 103281393,
-                "capacity": 300,
-                "vehicle_type": [84, 86, 87, 90],
+                "capacity": 252,
+                "vehicle_type": [82, 84, 85],
             },  # Indira-Gandhi-Str
             {
                 "depot_station": 103280619,
-                "capacity": 140,
-                "vehicle_type": [82, 84, 85, 87],
+                "capacity": 68,
+                "vehicle_type": [82, 84, 85],
             },  # Britz
             {
                 "depot_station": 103281456,
-                "capacity": 120,
-                "vehicle_type": [82, 84],
+                "capacity": 73,
+                "vehicle_type": [84],
             },  # Lichtenberg
             {
                 "depot_station": 103282126,
-                "capacity": 209,
+                "capacity": 153,
                 "vehicle_type": [82, 84, 85],
             },  # Cicerostr
             {
                 "depot_station": 103282127,
-                "capacity": 155,
-                "vehicle_type": [82, 84],
+                "capacity": 27,
+                "vehicle_type": [82, 84, 85],
             },  # Müllerstr
             {
                 "depot_station": 103282128,
-                "capacity": 220,
-                "vehicle_type": [82, 84],
+                "capacity": 175,
+                "vehicle_type": [82, 84, 85],
             },  # Spandau
             {
                 "name": "Saentisstr.",
                 "depot_station": (13.385661335581752, 52.41678762604055),
-                "capacity": 230,
-                "vehicle_type": [82, 84, 85, 86, 87, 90],
+                "capacity": 224,
+                "vehicle_type": [82, 84],
             },  # Säntisstr.
             {
                 "name": "Suedost",
                 "depot_station": (13.497371828836501, 52.46541010322369),
-                "capacity": 260,
-                "vehicle_type": [82, 84, 85, 86, 87, 90],
+                "capacity": 194,
+                "vehicle_type": [82, 84],
             },  # Südost
         ]
 
         original_capacities = [depot["capacity"] for depot in user_input_depot]
         DEPOT_USAGE = 1.0
 
-        ITER = 5
+        ITER = 1
         while ITER > 0:
             for depot, orig_cap in zip(user_input_depot, original_capacities):
                 depot["capacity"] = int(orig_cap * DEPOT_USAGE)
