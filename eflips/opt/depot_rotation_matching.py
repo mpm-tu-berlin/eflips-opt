@@ -26,6 +26,8 @@ from eflips.model import (
     VehicleType,
     StopTime,
     AssocRouteStation,
+    Event,
+    Vehicle,
 )
 
 from eflips.opt.util import (
@@ -458,6 +460,13 @@ class DepotRotationOptimizer:
             )
         else:
             self._delete_original_data()
+
+        # delete all events from the database
+
+        rotation_q = self.session.query(Rotation).filter(Rotation.scenario_id == self.scenario_id)
+        rotation_q.update({"vehicle_id": None})
+        self.session.query(Event).filter(Event.scenario_id == self.scenario_id).delete()
+        self.session.query(Vehicle).filter(Vehicle.scenario_id == self.scenario_id).delete()
 
         # Write new depot as stations
         depot_from_user = self.data["depot_from_user"]
