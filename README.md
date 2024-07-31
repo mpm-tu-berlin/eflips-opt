@@ -60,6 +60,47 @@ optimizer.optimize(time_report=True)
 optimizer.write_optimization_results(delete_original_data=True)
 ```
 
+## Simplified Electric Vehicle Scheduling Problem
+
+Example scripts for the Simplified Electric Vehicle Scheduling Problem can be found in the
+`examples/simplified_electric_vehicle_scheduling_problem` directory. It creates a graph of all possible trips and
+their possible connections. The minimum number of rotations is now a 
+[minimum path cover](https://en.wikipedia.org/wiki/Path_cover) of the graph. This is what the 
+`minimum_path_cover_rotation_plan()` function does. Its result however tries to make rotations as long as possible,
+ignoring the fact that the bus might need to be recharged (this is useful for identifying terminus stations to 
+electrify though. 
+
+In order to find a rotation plan that considers the battery state of the bus, the `soc_aware_rotation_plan()` function
+can be used. It iterates over the solution of the `minimum_path_cover_rotation_plan()` function and heuristically finds
+a good rotation plan that considers the battery state of the bus.
+
+### Known issues
+
+- The result is not optimal in terms of minimum waiting time at each terminus. This could be improved by fine-tuning
+the candidate selection process in the `create_graph_of_possible_connections()` function.
+- The result is not stable, changing with each new python process. This is due to there being multiple minimum path c
+covers of the graph. This could possibly be fixed by iterating over all minimum path covers and selecting the one that
+minimizes the dwell durations or the energy consumption of each bus. [See here for a possible implementation (but be careful of the combination explosion)](https://github.com/Xunius/bipartite_matching)
+
+### Usage
+
+```python
+# You probably want to create one schedule for each vehicle type, e.g. not connect 12m buses' trips with 18m buses' trips
+trips_by_vt = passenger_trips_by_vehicle_type(scenario, session)
+for vehicle_type, trips in trips_by_vt.items():
+   # The connection graph is what the schedule will be based on
+   graph = create_graph_of_possible_connections(trips)
+   
+   # The minimum path cover rotation plan just makes rotations as long as possible
+   rotation_graph = minimum_path_cover_rotation_plan(graph)
+   
+   # The soc aware rotation plan tries to make rotations that consider the battery state of the bus
+   soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE)
+   
+   # The rotation plan can be visualized
+   visualize_with_dash_cytoscape(soc_aware_graph)
+ ```
+
 ## Development
 
 We utilize the [GitHub Flow](https://docs.github.com/get-started/quickstart/github-flow) branching structure. This means

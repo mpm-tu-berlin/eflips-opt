@@ -7,7 +7,7 @@ from typing import Tuple, List, Dict, Coroutine, Any, Awaitable
 
 import os
 
-import openrouteservice # type: ignore
+import openrouteservice  # type: ignore
 import sqlalchemy.orm.session
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -32,9 +32,9 @@ async def deadhead_cost(
     point_end: Tuple[float, float],
     point_depot: Tuple[float, float],
     client: openrouteservice.Client,
-    profile: str="driving-car",
-    service: str="directions",
-    data_format: str="geojson",
+    profile: str = "driving-car",
+    service: str = "directions",
+    data_format: str = "geojson",
 ) -> Dict[str, Tuple[float, float]]:
     """
     Calculate the cost between two points using the openrouteservice API
@@ -102,12 +102,26 @@ async def calculate_deadhead_costs(
     df: pd.DataFrame, client: openrouteservice.Client
 ) -> List[Coroutine[Awaitable[Dict[str, Tuple[float, float]]], Any, Any]]:
     # Asynchronously compute deadhead cost
-    deadhead_costs: List[Coroutine[Awaitable[Dict[str, Tuple[float, float]]], Any, Any]] = []
+    deadhead_costs: List[
+        Coroutine[Awaitable[Dict[str, Tuple[float, float]]], Any, Any]
+    ] = []
     for row in df.itertuples():
         # Make mypy happy
-        assert isinstance(row.start_station_coord, tuple) and len(row.start_station_coord) == 2 and all([isinstance(x, float) for x in row.start_station_coord])
-        assert isinstance(row.end_station_coord, tuple) and len(row.end_station_coord) == 2 and all([isinstance(x, float) for x in row.end_station_coord])
-        assert isinstance(row.depot_station, tuple) and len(row.depot_station) == 2 and all([isinstance(x, float) for x in row.depot_station])
+        assert (
+            isinstance(row.start_station_coord, tuple)
+            and len(row.start_station_coord) == 2
+            and all([isinstance(x, float) for x in row.start_station_coord])
+        )
+        assert (
+            isinstance(row.end_station_coord, tuple)
+            and len(row.end_station_coord) == 2
+            and all([isinstance(x, float) for x in row.end_station_coord])
+        )
+        assert (
+            isinstance(row.depot_station, tuple)
+            and len(row.depot_station) == 2
+            and all([isinstance(x, float) for x in row.depot_station])
+        )
 
         cost_promise = deadhead_cost(
             row.start_station_coord, row.end_station_coord, row.depot_station, client
@@ -119,7 +133,9 @@ async def calculate_deadhead_costs(
     return deadhead_costs
 
 
-def get_depot_rot_assign(session: sqlalchemy.orm.session.Session, scenario_id: int) -> pd.DataFrame:
+def get_depot_rot_assign(
+    session: sqlalchemy.orm.session.Session, scenario_id: int
+) -> pd.DataFrame:
     data = []
 
     rotation_ids = (
@@ -212,7 +228,9 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
     return rotation_df
 
 
-def depot_data(session: sqlalchemy.orm.session.Session, scenario_id: int) -> pd.DataFrame:
+def depot_data(
+    session: sqlalchemy.orm.session.Session, scenario_id: int
+) -> pd.DataFrame:
     """
 
     :param session:
@@ -235,7 +253,11 @@ def depot_data(session: sqlalchemy.orm.session.Session, scenario_id: int) -> pd.
     return depot_df
 
 
-def get_vehicletype(session: sqlalchemy.orm.session.Session, scenario_id: int, standard_bus_length: float=12.0) -> pd.DataFrame:
+def get_vehicletype(
+    session: sqlalchemy.orm.session.Session,
+    scenario_id: int,
+    standard_bus_length: float = 12.0,
+) -> pd.DataFrame:
     """
     This function takes the session and scenario_id and returns the vehicle types and there size factors compared to a
     normal 12-meter bus
@@ -271,7 +293,9 @@ def get_vehicletype(session: sqlalchemy.orm.session.Session, scenario_id: int, s
     return vt_df
 
 
-def get_rotation_vehicle_assign(session: sqlalchemy.orm.session.Session, scenario_id: int) -> pd.DataFrame:
+def get_rotation_vehicle_assign(
+    session: sqlalchemy.orm.session.Session, scenario_id: int
+) -> pd.DataFrame:
     """
 
     :param session:
@@ -379,5 +403,7 @@ def get_occupancy(
             f"check if the time window is too large."
         )
 
-    occupancy_df = pd.DataFrame(occupancy, columns=sampled_time_stamp, index=rotation_ids)
+    occupancy_df = pd.DataFrame(
+        occupancy, columns=sampled_time_stamp, index=rotation_ids
+    )
     return occupancy_df
