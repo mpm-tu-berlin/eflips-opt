@@ -467,6 +467,7 @@ class DepotRotationOptimizer:
         rotation_q.update({"vehicle_id": None})
         self.session.query(Event).filter(Event.scenario_id == self.scenario_id).delete()
         self.session.query(Vehicle).filter(Vehicle.scenario_id == self.scenario_id).delete()
+        self.session.flush()
 
         # Write new depot as stations
         depot_from_user = self.data["depot_from_user"]
