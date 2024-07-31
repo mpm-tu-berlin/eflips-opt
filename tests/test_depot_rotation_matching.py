@@ -307,7 +307,6 @@ class TestHelpers:
             name="Line Charging Area",
             depot=depot,
             area_type=AreaType.LINE,
-            row_count=4,
             capacity=24,
         )
         session.add(charging_area)
@@ -543,11 +542,10 @@ class TestDepotRotationOptimizer(TestHelpers):
         optimizer.get_depot_from_input(user_input_depot)
         optimizer.data_preparation()
 
-        optimizer.optimize()
+
 
         with pytest.raises(ValueError):
+            optimizer.optimize()
 
-            optimizer.visualize()
-            optimizer.write_optimization_results(delete_original_data=True)
 
-        session.commit()
+        session.rollback()
