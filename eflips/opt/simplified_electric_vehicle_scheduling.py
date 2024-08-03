@@ -14,6 +14,7 @@ energy at the station.
 
 import itertools
 import logging
+import multiprocessing
 import os
 from datetime import timedelta
 from multiprocessing import Pool
@@ -34,6 +35,7 @@ from eflips.model import (
     TripType,
 )
 from sqlalchemy.orm import Session
+from tqdm.auto import tqdm
 
 
 def passenger_trips_by_vehicle_type(
@@ -396,8 +398,43 @@ def _effects_of_removal(
     return effects_of_removal
 
 
+def all_excessive_rotations(
+    rotation_graph: nx.DiGraph, network_graph: nx.DiGraph, soc_reserve: float
+) -> List[FrozenSet[int]]:
+    """
+    Calculate the total number of excessive rotations in the graph. An excessive rotation is a rotation that consumes
+    more energy than the state of charge reserve allows.
+
+    Useful for progress monitoring.
+
+    :param graph: A finished path cover graph, e.g. one where each node has at most one incoming and one outgoing edge.
+    :param soc_reserve: the state of charge reserve
+    :return: The total number of excessive rotations
+    """
+    # Find the energy consumption of each rotation
+    logger = logging.getLogger(__name__)
+
+    energy_consumption = {}
+    for rotation_set_of_nodes in nx.connected_components(
+        rotation_graph.to_undirected()
+    ):
+        rotation_energy = sum(
+            network_graph.nodes[node]["delta_soc"] for node in rotation_set_of_nodes
+        )
+        energy_consumption[frozenset(rotation_set_of_nodes)] = rotation_energy
+
+    # Get all node sets that exceed the SOC limit
+    excessive_rotations = [
+        rotation
+        for rotation in energy_consumption
+        if energy_consumption[rotation] > (1 - soc_reserve)
+    ]
+
+    return excessive_rotations
+
+
 def soc_aware_rotation_plan(
-    graph: nx.Graph, soc_reserve: float = 0.2, parallelism: bool = True
+    graph: nx.Graph, soc_reserve: float = 0.2, parallelism: int = 0
 ) -> nx.Graph:
     """
     Create a minimum path cover of the graph, taking into account the state of charge of the vehicle. This is the same
@@ -410,6 +447,8 @@ def soc_aware_rotation_plan(
     :param graph: A directed acyclic graph, containing the trips as nodes and the possible connections as edges.
     :param soc_reserve: The minimum state of charge that we want to keep in the battery **This includes the reserve
                                             needed to get to and from the depot**
+    :param parallelism: How many processes to use in the calculation. If 0, all available CPUs are used.
+                        If 1, no parallelism is used.
     :return: A graph containing the minimum path cover of the original graph.
     """
     logger = logging.getLogger(__name__)
@@ -423,6 +462,19 @@ def soc_aware_rotation_plan(
         if "delta_soc" not in graph.nodes[node]:
             raise ValueError("All nodes must have the delta_soc attribute")
 
+    # For progress monitoring, count the total number of excessive rotations
+    total_number_of_excessive_rotations = len(
+        all_excessive_rotations(
+            minimum_path_cover_rotation_plan(graph), graph, soc_reserve
+        )
+    )
+    progress_reporter = tqdm(
+        total=total_number_of_excessive_rotations, desc="Rotations made SoC-aware"
+    )
+    logger.info(
+        f"Total number of excessive rotations: {total_number_of_excessive_rotations}"
+    )
+
     finished_trips: List[List[int] | Tuple[int]] = []
     for set_of_nodes in nx.connected_components(graph.to_undirected()):
         subgraph = graph.subgraph(set_of_nodes).copy()
@@ -430,49 +482,37 @@ def soc_aware_rotation_plan(
         # Find the minimum path cover
         rotation_graph = minimum_path_cover_rotation_plan(subgraph)
 
+        last_excessive_rotation_count = None  # Used for progress monitoring
         while True:
             # Find the energy consumption of each rotation
-            energy_consumption = {}
-            for rotation_set_of_nodes in nx.connected_components(
-                rotation_graph.to_undirected()
-            ):
-                rotation_energy = sum(
-                    graph.nodes[node]["delta_soc"] for node in rotation_set_of_nodes
-                )
-                energy_consumption[frozenset(rotation_set_of_nodes)] = rotation_energy
-
-            if max(energy_consumption.values()) <= (1 - soc_reserve):
-                break
-            else:
-                number_of_excessive_rotations = sum(
-                    [
-                        1
-                        for rotation in energy_consumption.values()
-                        if rotation > (1 - soc_reserve)
-                    ]
-                )
-                logger.debug(
-                    f"Number of excessive rotations: {number_of_excessive_rotations}"
-                )
-
             # Get all node sets that exceed the SOC limit
-            excessive_rotations = [
-                rotation
-                for rotation in energy_consumption
-                if energy_consumption[rotation] > (1 - soc_reserve)
-            ]
+            excessive_rotations = all_excessive_rotations(
+                rotation_graph, subgraph, soc_reserve
+            )
+            if last_excessive_rotation_count is not None:
+                progress_reporter.update(
+                    last_excessive_rotation_count - len(excessive_rotations)
+                )
+            last_excessive_rotation_count = len(excessive_rotations)
+            if len(excessive_rotations) == 0:
+                break
 
             effects_of_removal: Dict[Tuple[int], Dict[str, float | int]] = {}
 
-            if parallelism:
+            if parallelism != 1:
+                if parallelism == 0:
+                    parallelism = multiprocessing.cpu_count()
+                logger.info(f"Using {parallelism} processes")
+
                 pool_args = []
                 for rotation in excessive_rotations:
                     pool_args.append((rotation, subgraph, soc_reserve))
-                with Pool() as pool:
+                with Pool(parallelism) as pool:
                     results = pool.starmap(_effects_of_removal, pool_args)
                 for result in results:
                     effects_of_removal.update(result)
             else:
+                logger.info("Using single process")
                 for rotation in excessive_rotations:
                     effects_of_removal.update(
                         _effects_of_removal(rotation, subgraph, soc_reserve)
