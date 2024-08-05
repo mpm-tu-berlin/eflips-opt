@@ -1,3 +1,4 @@
+import json
 import os
 
 import networkx as nx
@@ -6,11 +7,13 @@ from eflips.model import Scenario
 from sqlalchemy.orm import Session
 
 from eflips.opt.simplified_electric_vehicle_scheduling import (
-    passenger_trips_by_vehicle_type,
-    minimum_path_cover_rotation_plan,
-    soc_aware_rotation_plan,
-    efficiency_info,
     create_graph_of_possible_connections,
+    efficiency_info,
+    minimum_path_cover_rotation_plan,
+    passenger_trips_by_vehicle_type,
+    soc_aware_rotation_plan,
+    split_for_performance,
+    graph_to_json,
 )
 
 if __name__ == "__main__":
@@ -29,10 +32,13 @@ if __name__ == "__main__":
 
     for vehicle_type, trips in trips_by_vt.items():
         print(f"Vehicle type: {vehicle_type.name}")
-        graph = create_graph_of_possible_connections(trips)
-        rotation_graph = minimum_path_cover_rotation_plan(graph)
 
-        print("Rotation plan (not SOC-aware):")
+        graph = create_graph_of_possible_connections(trips)
+        graph = split_for_performance(graph)
+
+
+        rotation_graph = minimum_path_cover_rotation_plan(graph, use_rust=False)
+        print("Rotation plan (not SOC-aware , Python):")
         trip_lists = []
         for set_of_nodes in nx.connected_components(rotation_graph.to_undirected()):
             topoogical_order = list(
@@ -41,8 +47,29 @@ if __name__ == "__main__":
             trip_lists.append(topoogical_order)
         efficiency_info(trip_lists, session)
 
-        soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE)
-        print("Rotation plan (SOC-aware):")
+        rotation_graph = minimum_path_cover_rotation_plan(graph, use_rust=True)
+        print("Rotation plan (not SOC-aware , Rust):")
+        trip_lists = []
+        for set_of_nodes in nx.connected_components(rotation_graph.to_undirected()):
+            topoogical_order = list(
+                nx.topological_sort(rotation_graph.subgraph(set_of_nodes))
+            )
+            trip_lists.append(topoogical_order)
+        efficiency_info(trip_lists, session)
+
+
+        soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE, use_rust=False)
+        print("Rotation plan (SOC-aware, Python):")
+        trip_lists = []
+        for set_of_nodes in nx.connected_components(soc_aware_graph.to_undirected()):
+            topoogical_order = list(
+                nx.topological_sort(soc_aware_graph.subgraph(set_of_nodes))
+            )
+            trip_lists.append(topoogical_order)
+        efficiency_info(trip_lists, session)
+
+        soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE, use_rust=True)
+        print("Rotation plan (SOC-aware, Rust):")
         trip_lists = []
         for set_of_nodes in nx.connected_components(soc_aware_graph.to_undirected()):
             topoogical_order = list(
