@@ -15,10 +15,9 @@ energy at the station.
 import itertools
 import logging
 import multiprocessing
-import os
 from datetime import timedelta
 from multiprocessing import Pool
-from typing import List, Dict, FrozenSet, Tuple
+from typing import Dict, FrozenSet, List, Tuple
 
 import dash  # type: ignore
 import dash_cytoscape as cyto  # type: ignore
@@ -26,15 +25,7 @@ import networkx as nx  # type: ignore
 import numpy as np
 import sqlalchemy.orm.session
 from dash import html
-from eflips.model import (
-    Scenario,
-    VehicleType,
-    Trip,
-    Station,
-    Rotation,
-    TripType,
-)
-from sqlalchemy.orm import Session
+from eflips.model import (Rotation, Scenario, Station, Trip, TripType, VehicleType)
 from tqdm.auto import tqdm
 
 
@@ -90,12 +81,58 @@ def create_graph_of_rotations(rotations: List[Rotation]) -> nx.Graph:
                     G.add_edge(rotation.trips[i - 1].id, trip.id, color="black")
     return G
 
+def subgraph_to_json(graph: nx.Graph, soc_reserve: float) -> Dict:
+    """
+    Convert a graph to a JSON object that can be used by the rust optimization model.
+
+    The JSON output will have the following structure:
+    {
+        "nodes": [
+            {
+                "id": 0,
+                "weight": 0.1 # The effective weight of the node
+            },
+            ...
+        ],
+        "edges": [
+            {
+                "source": 0,
+                "target": 1,
+                "weight": 300 # The wait time in seconds
+            },
+            ...
+        ]
+    }
+
+    :param graph: A directed acyclic graph, containing the trips as nodes and the possible connections as edges.
+    :return: A JSON object containing the graph.
+    """
+    nodes = []
+    for node in graph.nodes:
+        effective_weight = graph.nodes[node]["delta_soc"] / (1-soc_reserve)
+        nodes.append(
+            {
+                "id": node,
+                "weight": effective_weight,
+            }
+        )
+    edges = []
+    for edge in graph.edges:
+        edges.append(
+            {
+                "source": edge[0],
+                "target": edge[1],
+                "weight": graph.edges[edge]["wait_time"],
+            }
+        )
+    return {"nodes": nodes, "edges": edges}
+
 
 def create_graph_of_possible_connections(
     trips: List[Trip],
     minimum_break_time: timedelta = timedelta(minutes=0),
     regular_break_time: timedelta = timedelta(minutes=30),
-    maximum_break_time: timedelta = timedelta(minutes=120),
+    maximum_break_time: timedelta = timedelta(minutes=60),
 ) -> nx.Graph:
     """
     Turns a list of trips into a directed acyclic graph. The nodes are the trips, and the edges are the possible
@@ -151,7 +188,6 @@ def create_graph_of_possible_connections(
             # Identify all the trips that could follow this trip
             # These are the ones departing from the same station and starting after the arrival of the current trip
             # But not too late
-
             if arrival_station in trips_by_departure_station.keys():
                 for following_trip in trips_by_departure_station[arrival_station]:
                     if (
@@ -193,6 +229,49 @@ def create_graph_of_possible_connections(
                             break
 
     return graph
+
+def split_for_performance(graph: nx.Graph, maximum_node_count=10000) -> nx.Graph:
+    """
+    Split the graph into smaller subgraphs, to make the calculations faster. For each disconnected component in the
+    original graph, we check if it is larger than the maximum node count. If it is, we split it into smaller subgraphs
+    that are smaller than the maximum node count.
+
+    :param graph: A directed acyclic graph
+    :return: The graph, split into smaller subgraphs
+    """
+    connected_components = list(nx.connected_components(graph.to_undirected()))
+    cur_max_node_count = max(len(component) for component in connected_components)
+    while cur_max_node_count > maximum_node_count:
+        print(f"Max node count: {cur_max_node_count}")  # TODO: Remove this
+        for component in connected_components:
+            if len(component) > maximum_node_count:
+                subgraph = graph.subgraph(component).copy()
+                (nodes_a, nodes_b) = nx.algorithms.community.kernighan_lin_bisection(
+                    subgraph.to_undirected(),
+                    seed=42,
+                )
+                # Remove all all edges between nodes in nodes_a and nodes_b from the graph
+                to_remove = []
+                for edge in subgraph.edges:
+                    if edge[0] in nodes_a and edge[1] in nodes_b:
+                        to_remove.append(edge)
+                    if edge[0] in nodes_b and edge[1] in nodes_a:
+                        to_remove.append(edge)
+                graph.remove_edges_from(to_remove)
+        connected_components = list(nx.connected_components(graph.to_undirected()))
+        cur_max_node_count = max(len(component) for component in connected_components)
+    return graph
+
+def graph_to_json(graph: nx.Graph, soc_reserve: float) -> List[Dict]:
+    result = []
+    for connected_component in nx.connected_components(graph.to_undirected()):
+        subgraph = graph.subgraph(connected_component).copy()
+
+        # filename is the number of nodes with leading zeros + a random UUID + .json
+        the_dict = subgraph_to_json(subgraph, soc_reserve)
+        result.append(the_dict)
+    return result
+
 
 
 def compare_graphs(orig: nx.Graph, new: nx.Graph) -> None:
@@ -498,7 +577,6 @@ def soc_aware_rotation_plan(
                 break
 
             effects_of_removal: Dict[Tuple[int], Dict[str, float | int]] = {}
-
             if parallelism != 1:
                 if parallelism == 0:
                     parallelism = multiprocessing.cpu_count()
