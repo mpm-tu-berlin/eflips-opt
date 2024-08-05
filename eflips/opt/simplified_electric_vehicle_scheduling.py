@@ -572,9 +572,10 @@ def soc_aware_rotation_plan(
             delta_soc = sum(
                 [graph_copy.nodes[node]["delta_soc"] for node in set_of_nodes]
             )
-            if delta_soc >= 0.8:
+            if delta_soc >= (1-soc_reserve):
+                logger.error(f"Excessive rotation: {set_of_nodes}")
                 excessive_trips += 1
-        assert excessive_trips == 0
+        assert excessive_trips == 0, f"Found {excessive_trips} excessive rotations"
 
         return graph_copy
 

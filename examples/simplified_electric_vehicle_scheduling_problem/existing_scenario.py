@@ -36,7 +36,6 @@ if __name__ == "__main__":
         graph = create_graph_of_possible_connections(trips)
         graph = split_for_performance(graph)
 
-
         rotation_graph = minimum_path_cover_rotation_plan(graph, use_rust=False)
         print("Rotation plan (not SOC-aware , Python):")
         trip_lists = []
@@ -57,8 +56,9 @@ if __name__ == "__main__":
             trip_lists.append(topoogical_order)
         efficiency_info(trip_lists, session)
 
-
-        soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE, use_rust=False)
+        soc_aware_graph = soc_aware_rotation_plan(
+            graph, soc_reserve=SOC_RESERVE, use_rust=False
+        )
         print("Rotation plan (SOC-aware, Python):")
         trip_lists = []
         for set_of_nodes in nx.connected_components(soc_aware_graph.to_undirected()):
@@ -68,7 +68,9 @@ if __name__ == "__main__":
             trip_lists.append(topoogical_order)
         efficiency_info(trip_lists, session)
 
-        soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE, use_rust=True)
+        soc_aware_graph = soc_aware_rotation_plan(
+            graph, soc_reserve=SOC_RESERVE, use_rust=True
+        )
         print("Rotation plan (SOC-aware, Rust):")
         trip_lists = []
         for set_of_nodes in nx.connected_components(soc_aware_graph.to_undirected()):
