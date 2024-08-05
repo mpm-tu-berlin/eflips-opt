@@ -19,7 +19,7 @@ plotly = "^5.22.0"
 networkx = "^3.3"
 scipy = "^1.14.0"
 tqdm = "^4.66.4"
-eflips-schedule-rust = "^0.1.0"
+eflips-schedule-rust = "^1.0.1"
 
 [tool.poetry.group.dev.dependencies]
 pandas-stubs = "^2.2.2.240603"
