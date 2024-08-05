@@ -36,12 +36,9 @@ if __name__ == "__main__":
         graph = create_graph_of_possible_connections(trips)
         graph = split_for_performance(graph)
 
-        with open(f"graph_{vehicle_type.name}.json", "w") as f:
-            json.dump(graph_to_json(graph, soc_reserve=0.2), f)
 
-        rotation_graph = minimum_path_cover_rotation_plan(graph)
-
-        print("Rotation plan (not SOC-aware):")
+        rotation_graph = minimum_path_cover_rotation_plan(graph, use_rust=False)
+        print("Rotation plan (not SOC-aware , Python):")
         trip_lists = []
         for set_of_nodes in nx.connected_components(rotation_graph.to_undirected()):
             topoogical_order = list(
@@ -50,37 +47,29 @@ if __name__ == "__main__":
             trip_lists.append(topoogical_order)
         efficiency_info(trip_lists, session)
 
-        # Read in the "matching.json" file with the rust rotation plan
-        with open("matching.json", "r") as f:
-            matching = json.load(f)
-        rust_graph = graph.copy()
-        rust_graph.remove_edges_from(list(rust_graph.edges))
-        for edge in matching:
-            assert rust_graph.has_node(edge[0])
-            assert rust_graph.has_node(edge[1])
-            assert graph.has_edge(edge[0], edge[1])
-            rust_graph.add_edge(edge[0], edge[1])
-
-        print("Rotation plan (rust):")
+        rotation_graph = minimum_path_cover_rotation_plan(graph, use_rust=True)
+        print("Rotation plan (not SOC-aware , Rust):")
         trip_lists = []
-        for set_of_nodes in nx.connected_components(rust_graph.to_undirected()):
+        for set_of_nodes in nx.connected_components(rotation_graph.to_undirected()):
             topoogical_order = list(
-                nx.topological_sort(rust_graph.subgraph(set_of_nodes))
+                nx.topological_sort(rotation_graph.subgraph(set_of_nodes))
             )
             trip_lists.append(topoogical_order)
         efficiency_info(trip_lists, session)
-        # count the number of trips that are excessive
-        excessive_trips = 0
-        for set_of_nodes in nx.connected_components(rust_graph.to_undirected()):
-            delta_soc = sum(
-                [rust_graph.nodes[node]["delta_soc"] for node in set_of_nodes]
-            )
-            if delta_soc >= 0.8:
-                excessive_trips += 1
-        assert excessive_trips == 0
 
-        soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE)
-        print("Rotation plan (SOC-aware):")
+
+        soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE, use_rust=False)
+        print("Rotation plan (SOC-aware, Python):")
+        trip_lists = []
+        for set_of_nodes in nx.connected_components(soc_aware_graph.to_undirected()):
+            topoogical_order = list(
+                nx.topological_sort(soc_aware_graph.subgraph(set_of_nodes))
+            )
+            trip_lists.append(topoogical_order)
+        efficiency_info(trip_lists, session)
+
+        soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE, use_rust=True)
+        print("Rotation plan (SOC-aware, Rust):")
         trip_lists = []
         for set_of_nodes in nx.connected_components(soc_aware_graph.to_undirected()):
             topoogical_order = list(

@@ -13,6 +13,7 @@ energy at the station.
 
 
 import itertools
+import json
 import logging
 import multiprocessing
 from datetime import timedelta
@@ -27,6 +28,7 @@ import sqlalchemy.orm.session
 from dash import html
 from eflips.model import (Rotation, Scenario, Station, Trip, TripType, VehicleType)
 from tqdm.auto import tqdm
+from eflips_schedule_rust import rotation_plan
 
 
 def passenger_trips_by_vehicle_type(
@@ -308,7 +310,7 @@ def compare_graphs(orig: nx.Graph, new: nx.Graph) -> None:
             )
 
 
-def minimum_path_cover_rotation_plan(graph: nx.Graph) -> nx.Graph:
+def minimum_path_cover_rotation_plan(graph: nx.Graph, use_rust: bool = True) -> nx.Graph:
     """
     Create a minimum path cover of the graph. This is the same as finding the minimum number of rotations that cover all
     the trips in the graph.
@@ -320,6 +322,23 @@ def minimum_path_cover_rotation_plan(graph: nx.Graph) -> nx.Graph:
     :return: A graph containing the minimum path cover of the original graph.
     """
     logger = logging.getLogger(__name__)
+
+    if use_rust:
+        # Convert the graph to JSON
+        graph_json = graph_to_json(graph, soc_reserve=0.0) # We don't care about the SOC reserve here
+        # Call the rust function
+        matching = rotation_plan(json.dumps(graph_json), soc_aware=False)
+        # Convert the result back to a networkx graph
+        graph_copy = graph.copy()
+        graph_copy.remove_edges_from(list(graph_copy.edges))
+        for edge in matching:
+            assert graph_copy.has_node(edge[0])
+            assert graph_copy.has_node(edge[1])
+            assert graph.has_edge(edge[0], edge[1])
+            graph_copy.add_edge(edge[0], edge[1], wait_time=graph.edges[edge]["wait_time"])
+
+        return graph_copy
+
     rotations: List[List[int]] = []
 
     logger.info(
@@ -513,7 +532,7 @@ def all_excessive_rotations(
 
 
 def soc_aware_rotation_plan(
-    graph: nx.Graph, soc_reserve: float = 0.2, parallelism: int = 0
+    graph: nx.Graph, soc_reserve: float = 0.2, parallelism: int = 0, use_rust: bool = True
 ) -> nx.Graph:
     """
     Create a minimum path cover of the graph, taking into account the state of charge of the vehicle. This is the same
@@ -531,6 +550,33 @@ def soc_aware_rotation_plan(
     :return: A graph containing the minimum path cover of the original graph.
     """
     logger = logging.getLogger(__name__)
+
+    if use_rust:
+        # Convert the graph to JSON
+        graph_json = graph_to_json(graph, soc_reserve)
+        # Call the rust function
+        matching = rotation_plan(json.dumps(graph_json), soc_aware=True)
+        # Convert the result back to a networkx graph
+        graph_copy = graph.copy()
+        graph_copy.remove_edges_from(list(graph_copy.edges))
+        for edge in matching:
+            assert graph_copy.has_node(edge[0])
+            assert graph_copy.has_node(edge[1])
+            assert graph.has_edge(edge[0], edge[1])
+            graph_copy.add_edge(edge[0], edge[1], wait_time=graph.edges[edge]["wait_time"])
+
+        # Make sure there are no excessive rotations
+        # count the number of trips that are excessive
+        excessive_trips = 0
+        for set_of_nodes in nx.connected_components(graph_copy.to_undirected()):
+            delta_soc = sum(
+                [graph_copy.nodes[node]["delta_soc"] for node in set_of_nodes]
+            )
+            if delta_soc >= 0.8:
+                excessive_trips += 1
+        assert excessive_trips == 0
+
+        return graph_copy
 
     # Make sure the graph is acyclic
     if not nx.is_directed_acyclic_graph(graph):
