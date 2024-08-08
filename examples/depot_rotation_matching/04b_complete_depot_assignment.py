@@ -323,8 +323,7 @@ def optimize_scenario(scenario: Scenario, session: sqlalchemy.orm.session.Sessio
     # # Intialize the Optimizer
     optimizer = DepotRotationOptimizer(session, scenario.id)
     original_capacities = [depot["capacity"] for depot in depot_list]
-    optimizer.get_depot_from_input(depot_list)
-    optimizer.data_preparation()
+    
 
     # Using the optimizer iteratively to reach a lower depot capacity until the solution is not feasible
     DEPOT_USAGE = 1.0
@@ -334,6 +333,9 @@ def optimize_scenario(scenario: Scenario, session: sqlalchemy.orm.session.Sessio
     while ITER > 0:
         for depot, orig_cap in zip(depot_list, original_capacities):
             depot["capacity"] = int(orig_cap * DEPOT_USAGE)
+
+        optimizer.get_depot_from_input(depot_list)
+        optimizer.data_preparation()
         try:
             optimizer.optimize(time_report=True)
         except ValueError as e:
