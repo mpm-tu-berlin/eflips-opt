@@ -355,7 +355,7 @@ def optimize_scenario(scenario: Scenario, session: sqlalchemy.orm.session.Sessio
     fig.write_image(f"04b_complete_rotation_plan_{scenario.name_short}.svg")
 
     # Visualize the deadhead costs
-    optimizer.visualize_deadhead_costs()
+    # optimizer.visualize_deadhead_costs()
 
     # Save a geographic trip plot
     # We will need to flush and expunge the session in order for the geom to be converted to binary
