@@ -13,6 +13,7 @@ from geoalchemy2.shape import to_shape
 import pandas as pd
 
 import pyomo.environ as pyo  # type: ignore
+from matplotlib import pyplot as plt
 from pyomo.common.timing import report_timing  # type: ignore
 
 import plotly.graph_objects as go  # type: ignore
@@ -691,6 +692,30 @@ class DepotRotationOptimizer:
             self.session.add_all(return_stop_times)
             new_return_trip.stop_times = return_stop_times
             self.session.add(new_return_trip)
+
+
+    def visualize_deadhead_costs(self):
+        new_assign = self.data["result"]
+        orig_assign = self.data["orig_assign"]
+
+        # Plotting
+        orig_cost = orig_assign["cost"]
+        new_cost = new_assign["cost"]
+        orig_cost_mean = orig_cost.mean()
+        new_cost_mean = new_cost.mean()
+
+        plt.hist(orig_cost, alpha=0.5)
+        plt.hist(new_cost, alpha=0.5)
+        plt.legend(["Original", "New"])
+
+        min_ylim, max_ylim = plt.ylim()
+        plt.axvline(orig_cost_mean, color='k', linestyle='dashed', linewidth=1)
+        plt.text(orig_cost_mean * 1.1, max_ylim * 0.9, 'Old_Mean: {:.2f}'.format(orig_cost_mean))
+        plt.axvline(new_assign["cost"].mean(), color='b', linestyle='dashed', linewidth=1)
+        plt.text(new_cost_mean * 1.1, max_ylim * 0.1, 'New_Mean: {:.2f}'.format(new_cost_mean))
+
+        plt.savefig(f"deadhead_costs_scenario_{self.scenario_id}.png")
+
 
     def visualize(self) -> go.Figure:
         """
