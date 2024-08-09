@@ -463,10 +463,14 @@ class DepotRotationOptimizer:
 
         # delete all events from the database
 
-        rotation_q = self.session.query(Rotation).filter(Rotation.scenario_id == self.scenario_id)
+        rotation_q = self.session.query(Rotation).filter(
+            Rotation.scenario_id == self.scenario_id
+        )
         rotation_q.update({"vehicle_id": None})
         self.session.query(Event).filter(Event.scenario_id == self.scenario_id).delete()
-        self.session.query(Vehicle).filter(Vehicle.scenario_id == self.scenario_id).delete()
+        self.session.query(Vehicle).filter(
+            Vehicle.scenario_id == self.scenario_id
+        ).delete()
         self.session.flush()
 
         # Write new depot as stations
@@ -496,14 +500,15 @@ class DepotRotationOptimizer:
                 depot_station = (
                     self.session.query(Station)
                     .filter(Station.name == depot_name)
-                    .first()
+                    .filter(Station.scenario_id == self.scenario_id)
+                    .one()
                 )
             else:
                 depot_station_id = depot_from_user[row.new_depot_id]["depot_station"]  # type: ignore
                 depot_station = (
                     self.session.query(Station)
                     .filter(Station.id == depot_station_id)
-                    .first()
+                    .one()
                 )
                 assert depot_station is not None, "Depot station not found"
                 depot_name = depot_station.name  # type: ignore

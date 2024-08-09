@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "eflips-opt"
-version = "0.1.0"
+version = "0.1.1"
 description = ""
 authors = ["shuyao <shuyao.guo@tu-berlin.de>"]
 packages = [{include="eflips/opt"}]
