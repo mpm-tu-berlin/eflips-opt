@@ -16,6 +16,7 @@ import itertools
 import json
 import logging
 import multiprocessing
+import os
 from datetime import timedelta
 from multiprocessing import Pool
 from typing import Dict, FrozenSet, List, Tuple
@@ -27,8 +28,8 @@ import numpy as np
 import sqlalchemy.orm.session
 from dash import html
 from eflips.model import (Rotation, Scenario, Station, Trip, TripType, VehicleType)
-from tqdm.auto import tqdm
 from eflips_schedule_rust import rotation_plan
+from tqdm.auto import tqdm
 
 
 def passenger_trips_by_vehicle_type(
@@ -334,8 +335,19 @@ def minimum_path_cover_rotation_plan(graph: nx.Graph, use_rust: bool = True) -> 
         for edge in matching:
             assert graph_copy.has_node(edge[0])
             assert graph_copy.has_node(edge[1])
-            assert graph.has_edge(edge[0], edge[1])
-            graph_copy.add_edge(edge[0], edge[1], wait_time=graph.edges[edge]["wait_time"])
+
+            # Check if the edge is in the original graph
+            if graph.has_edge(edge[0], edge[1]):
+                graph_copy.add_edge(edge[0], edge[1], wait_time=graph.edges[edge]["wait_time"])
+            else:
+                logger.warning(f"Edge {edge[0]} -> {edge[1]} not in original graph")
+
+                # If it's there inverted, we can just invert the edge
+                if graph.has_edge(edge[1], edge[0]):
+                    graph_copy.add_edge(edge[1], edge[0], wait_time=graph.edges[edge]["wait_time"])
+                else:
+                    logger.error(f"Edge {edge[0]} -> {edge[1]} not in original graph")
+                    raise ValueError(f"Edge {edge[0]} -> {edge[1]} not in original graph")
 
         return graph_copy
 
@@ -576,8 +588,19 @@ def soc_aware_rotation_plan(
         for edge in matching:
             assert graph_copy.has_node(edge[0]), f"Node {edge[0]} not in original graph"
             assert graph_copy.has_node(edge[1]), f"Node {edge[1]} not in original graph"
-            assert graph.has_edge(edge[0], edge[1]), f"Edge {edge[0]} -> {edge[1]} not in original graph"
-            graph_copy.add_edge(edge[0], edge[1], wait_time=graph.edges[edge]["wait_time"])
+
+            # Check if the edge is in the original graph
+            if graph.has_edge(edge[0], edge[1]):
+                graph_copy.add_edge(edge[0], edge[1], wait_time=graph.edges[edge]["wait_time"])
+            else:
+                logger.warning(f"Edge {edge[0]} -> {edge[1]} not in original graph")
+
+                # If it's there inverted, we can just invert the edge
+                if graph.has_edge(edge[1], edge[0]):
+                    graph_copy.add_edge(edge[1], edge[0], wait_time=graph.edges[edge]["wait_time"])
+                else:
+                    logger.error(f"Edge {edge[0]} -> {edge[1]} not in original graph")
+                    raise ValueError(f"Edge {edge[0]} -> {edge[1]} not in original graph")
 
         # Make sure there are no excessive rotations
         # count the number of trips that are excessive
