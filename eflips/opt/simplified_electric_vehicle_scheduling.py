@@ -19,6 +19,7 @@ import multiprocessing
 import os
 from datetime import timedelta
 from multiprocessing import Pool
+from tempfile import gettempdir
 from typing import Dict, FrozenSet, List, Tuple
 
 import dash  # type: ignore
