@@ -554,15 +554,29 @@ def soc_aware_rotation_plan(
     if use_rust:
         # Convert the graph to JSON
         graph_json = graph_to_json(graph, soc_reserve)
+
+        # Dump the graph to a file for debugging
+        temp_file = "graph_in.json"
+        path = os.path.join(gettempdir(), temp_file)
+        with open(path, "w") as f:
+            json.dump(graph_json, f)
+
         # Call the rust function
         matching = rotation_plan(json.dumps(graph_json), soc_aware=True)
+
+        # Dump the matching to a file for debugging
+        temp_file = "graph_out.json"
+        path = os.path.join(gettempdir(), temp_file)
+        with open(path, "w") as f:
+            json.dump(matching, f)
+
         # Convert the result back to a networkx graph
         graph_copy = graph.copy()
         graph_copy.remove_edges_from(list(graph_copy.edges))
         for edge in matching:
-            assert graph_copy.has_node(edge[0])
-            assert graph_copy.has_node(edge[1])
-            assert graph.has_edge(edge[0], edge[1])
+            assert graph_copy.has_node(edge[0]), f"Node {edge[0]} not in original graph"
+            assert graph_copy.has_node(edge[1]), f"Node {edge[1]} not in original graph"
+            assert graph.has_edge(edge[0], edge[1]), f"Edge {edge[0]} -> {edge[1]} not in original graph"
             graph_copy.add_edge(edge[0], edge[1], wait_time=graph.edges[edge]["wait_time"])
 
         # Make sure there are no excessive rotations
