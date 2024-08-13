@@ -297,6 +297,7 @@ def graph_to_json(graph: nx.Graph, soc_reserve: float) -> List[Dict]:
         # filename is the number of nodes with leading zeros + a random UUID + .json
         the_dict = subgraph_to_json(subgraph, soc_reserve)
         result.append(the_dict)
+    result = sort_graph_json(result)
     return result
 
 
@@ -334,6 +335,24 @@ def compare_graphs(orig: nx.Graph, new: nx.Graph) -> None:
                 f"Trip info: {new.nodes[prev_node]['name']} -> {new.nodes[next_node]['name']}"
             )
 
+def sort_graph_json(graph_json: List[Dict]) -> List[Dict]:
+    """
+    For repeatability, sort the graph JSON
+    :param graph_json: a list of dictionaries, each containing a 'nodes' and 'edges' key
+    :return: a sorted list of dictionaries
+    """
+
+    # loaded is a list of dictionaries, with the following keys:
+    # 'nodes': a list of 'id', 'weight' dicts
+    # 'edges': a list of 'source', 'target', 'weight' dicts
+    # We will sort each entrie's nodes by the id and edges by the (source, target) tuple
+    for entry in graph_json:
+        entry["nodes"] = sorted(entry["nodes"], key=lambda x: x["id"])
+        entry["edges"] = sorted(entry["edges"], key=lambda x: (x["source"], x["target"]))
+
+    # We will then sort the entries by size, descending
+    graph_json = sorted(graph_json, key=lambda x: len(x["nodes"]), reverse=True)
+    return graph_json
 
 def minimum_path_cover_rotation_plan(graph: nx.Graph, use_rust: bool = True) -> nx.Graph:
     """
