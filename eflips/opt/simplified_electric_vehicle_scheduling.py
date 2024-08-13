@@ -137,6 +137,7 @@ def create_graph_of_possible_connections(
     minimum_break_time: timedelta = timedelta(minutes=0),
     regular_break_time: timedelta = timedelta(minutes=30),
     maximum_break_time: timedelta = timedelta(minutes=60),
+    do_not_cross_service_day_breaks: bool = False,
 ) -> nx.Graph:
     """
     Turns a list of trips into a directed acyclic graph. The nodes are the trips, and the edges are the possible
@@ -148,6 +149,8 @@ def create_graph_of_possible_connections(
      break time are added as edges.
     :param maximum_break_time: The maximum break time between two trips. If no edge is added with the regular break time,
     the *first* trip before the maximum break time is added.
+    :param do_not_cross_service_day_breaks: If True, we do not allow connections between trips that cross the service
+    day break.
 
     :return: A directed acyclic graph havong the trips as nodes and the possible connections as edges.
     """
@@ -200,6 +203,16 @@ def create_graph_of_possible_connections(
                         and following_trip.departure_time
                         <= trip.arrival_time + regular_break_time
                     ):
+                        if do_not_cross_service_day_breaks:
+                            # If we are not allowed to cross the service day break, we have to make an additional check:
+                            # What is the date of the start of the following trip's rotation?
+                            # What is the date of the end of the current trip's rotation?
+                            # If they are not the same, we cannot connect the trips
+                            current_trip_rotatiom_start = trip.rotation.trips[0].departure_time.date()
+                            following_trip_rotation_start = following_trip.rotation.trips[0].departure_time.date()
+                            if current_trip_rotatiom_start != following_trip_rotation_start:
+                                continue
+
                         graph.add_edge(
                             trip.id,
                             following_trip.id,
@@ -219,6 +232,16 @@ def create_graph_of_possible_connections(
                             and following_trip.departure_time
                             <= trip.arrival_time + maximum_break_time
                         ):
+                            if do_not_cross_service_day_breaks:
+                                # If we are not allowed to cross the service day break, we have to make an additional check:
+                                # What is the date of the start of the following trip's rotation?
+                                # What is the date of the end of the current trip's rotation?
+                                # If they are not the same, we cannot connect the trips
+                                current_trip_rotatiom_start = trip.rotation.trips[0].departure_time.date()
+                                following_trip_rotation_start = following_trip.rotation.trips[0].departure_time.date()
+                                if current_trip_rotatiom_start != following_trip_rotation_start:
+                                    continue
+
                             graph.add_edge(
                                 trip.id,
                                 following_trip.id,
