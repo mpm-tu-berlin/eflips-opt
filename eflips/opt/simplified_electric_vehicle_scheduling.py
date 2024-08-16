@@ -17,6 +17,7 @@ import json
 import logging
 import multiprocessing
 import os
+import random
 from datetime import timedelta
 from multiprocessing import Pool
 from tempfile import gettempdir
@@ -349,6 +350,10 @@ def sort_graph_json(graph_json: List[Dict]) -> List[Dict]:
     for entry in graph_json:
         entry["nodes"] = sorted(entry["nodes"], key=lambda x: x["id"])
         entry["edges"] = sorted(entry["edges"], key=lambda x: (x["source"], x["target"]))
+
+        #TODO: Sort randomly to avoid the same result every time
+        random.shuffle(entry["nodes"])
+        random.shuffle(entry["edges"])
 
     # We will then sort the entries by size, descending
     graph_json = sorted(graph_json, key=lambda x: len(x["nodes"]), reverse=True)
