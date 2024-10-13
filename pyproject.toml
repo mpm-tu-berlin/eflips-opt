@@ -1,10 +1,15 @@
 [tool.poetry]
 name = "eflips-opt"
 version = "0.1.2"
-description = ""
-authors = ["shuyao <shuyao.guo@tu-berlin.de>"]
+description = "A collection of pre-simulation optimization algorithms for eFLIPS."
 packages = [{include="eflips/opt"}]
 readme = "README.md"
+authors = [
+  {name = "Shuyao Guo", email = "shuyao.guo@tu-berlin.de"},
+  {name = "Ludger Heide", email = "ludger.heide@tu-berlin.de"},
+]
+readme = "README.md"
+license = {file = "AGPLV3.md"}
 
 [tool.poetry.dependencies]
 python = "^3.10"
