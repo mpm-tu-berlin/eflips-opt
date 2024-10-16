@@ -14,25 +14,20 @@ energy at the station.
 
 import itertools
 import json
-import logging
-import multiprocessing
 import os
 from datetime import timedelta
-from multiprocessing import Pool
 from tempfile import gettempdir
-from typing import Dict, FrozenSet, List, Tuple
+from typing import Dict, List, Tuple
 
 import dash  # type: ignore
 import dash_cytoscape as cyto  # type: ignore
-import eflips_schedule_rust
+import eflips_schedule_rust  # type: ignore
 import networkx as nx  # type: ignore
 import numpy as np
 import sqlalchemy.orm.session
 from dash import html
 from eflips.model import Rotation, Scenario, Station, Trip, TripType, VehicleType
-from eflips_schedule_rust import rotation_plan
-from networkx.classes import Graph
-from tqdm.auto import tqdm
+from networkx.classes import Graph  # type: ignore
 
 from eflips.opt.scheduling.util import _validate_input_graph, _graph_to_json
 
@@ -246,24 +241,27 @@ def solve(graph: nx.Graph, write_to_file: bool = False) -> nx.Graph:
     - Connections that cannot be made should be represented as not existing, not by a very high weight.
 
     :param graph: A directed acyclic grpah as a networkx Graph
+    :param write_to_file: If True, the graph will be written to a file in the temp directory. This is useful for debugging.
     :return: A list of edges in the form os (NodeID, NodeID) tuples.
     """
     graph = _validate_input_graph(graph)
     json_graph = _graph_to_json(graph)
 
     if write_to_file:
-        with open(os.path.join(gettempdir(), "graph.json"), "w") as file:
-            json.dump(json_graph, file)
+        # The json is not pretty-printed. Reload it and use json.dumps with indent=4 to pretty-print it.
+        json_data = json.loads(json_graph)
+        json_graph = json.dumps(json_data, indent=4)
+        with open(os.path.join(gettempdir(), "graph.json"), "w") as fp:
+            fp.write(json_graph)
+            print(f"Saved file to {os.path.join(gettempdir(), 'graph.json')}")
 
     # Call the rust solver
-    result = eflips_schedule_rust.rotation_plan(json_graph, soc_aware=True)  # TODO9
-    # The result is a json string with the solution
-    result = json.loads(result)
+    result: List[Tuple[int, int]] = eflips_schedule_rust.solve(json_graph)
 
     # The result is a list of edges
     # Create a copy of our graph, delete all edges and add the ones from the result
     result_graph = graph.copy()
-    result_graph.remove_edges_from(result_graph.edges)
+    result_graph.remove_edges_from(graph.edges)
     result_graph.add_edges_from(result)
     return result_graph
 

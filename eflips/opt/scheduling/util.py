@@ -1,7 +1,7 @@
 import json
 from typing import List, Tuple, Dict
 
-import networkx as nx
+import networkx as nx  # type: ignore
 
 
 def _validate_input_graph(graph: nx.Graph) -> nx.Graph:
@@ -102,7 +102,9 @@ def _subgraph_to_dict(
     return {"nodes": nodes, "edges": edges}
 
 
-def _sort_graph_json(graph_json: List[Dict]) -> List[Dict]:
+def _sort_graph_json(
+    graph_json: List[Dict[str, List[Dict[str, int | Tuple[int | float | None, ...]]]]]
+) -> List[Dict[str, List[Dict[str, int | Tuple[int | float | None, ...]]]]]:
     """
     For repeatability, sort the graph JSON
     :param graph_json: a list of dictionaries, each containing a 'nodes' and 'edges' key

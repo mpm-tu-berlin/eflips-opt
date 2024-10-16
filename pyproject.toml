@@ -3,13 +3,15 @@ name = "eflips-opt"
 version = "0.1.2"
 description = "A collection of pre-simulation optimization algorithms for eFLIPS."
 packages = [{include="eflips/opt"}]
-readme = "README.md"
 authors = [
-  {name = "Shuyao Guo", email = "shuyao.guo@tu-berlin.de"},
-  {name = "Ludger Heide", email = "ludger.heide@tu-berlin.de"},
+  "Shuyao Guo <shuyao.guo@tu-berlin.de>",
+  "Ludger Heide <ludger.heide@tu-berlin.de>",
 ]
 readme = "README.md"
-license = {file = "AGPLV3.md"}
+license = "AGPLV3.md"
+
+[project.urls]
+Repository = "https://github.com/mpm-tu-berlin/eflips-opt"
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -24,7 +26,7 @@ plotly = "^5.22.0"
 networkx = "^3.3"
 scipy = "^1.14.0"
 tqdm = "^4.66.4"
-eflips-schedule-rust = "^1.0.1"
+eflips-schedule-rust = "^2.0.1"
 
 [tool.poetry.group.dev.dependencies]
 pandas-stubs = "^2.2.2.240603"

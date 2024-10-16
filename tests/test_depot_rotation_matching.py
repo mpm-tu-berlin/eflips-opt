@@ -542,10 +542,7 @@ class TestDepotRotationOptimizer(TestHelpers):
         optimizer.get_depot_from_input(user_input_depot)
         optimizer.data_preparation()
 
-
-
         with pytest.raises(ValueError):
             optimizer.optimize()
-
 
         session.rollback()

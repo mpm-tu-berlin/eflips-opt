@@ -535,7 +535,7 @@ class DepotRotationOptimizer:
             ferry_route = (
                 self.session.query(Route)
                 .filter(
-                    Route.departure_station_id == depot_station.id,  # type: ignore
+                    Route.departure_station_id == depot_station.id,
                     Route.arrival_station_id == first_trip.route.departure_station_id,
                 )
                 .all()
@@ -621,7 +621,7 @@ class DepotRotationOptimizer:
                 self.session.query(Route)
                 .filter(
                     Route.departure_station_id == last_trip.route.arrival_station_id,
-                    Route.arrival_station_id == depot_station.id,  # type: ignore
+                    Route.arrival_station_id == depot_station.id,
                 )
                 .all()
             )

@@ -346,123 +346,125 @@ files = [
 
 [[package]]
 name = "eflips-model"
-version = "5.0.0"
+version = "5.2.3"
 description = "A common data model for the eflips family of electric vehicle simulation & optimization tools."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "eflips_model-5.0.0-py3-none-any.whl", hash = "sha256:1b592a218e9e17a9aad73f4c1618afb7d83081a06131f2568f3e6e0126b578a5"},
-    {file = "eflips_model-5.0.0.tar.gz", hash = "sha256:eda6ac2e1ec4c028fa024e122e76c5f30da700cb35d32433b5d3891500c6b5a0"},
+    {file = "eflips_model-5.2.3-py3-none-any.whl", hash = "sha256:51dacc9b68addbf15b2dd773332a03e37e3f96ae3ce5e355f72d55366c410c64"},
+    {file = "eflips_model-5.2.3.tar.gz", hash = "sha256:387203de31fb01dcd6ea829c4b858f74e0078d2a694bd0b988fc4fee55ae8e0c"},
 ]
 
 [package.dependencies]
 alembic = ">=1.12.1,<2.0.0"
 geoalchemy2 = ">=0.14.2,<0.15.0"
+numpy = ">=1.2.6,<2.0.0"
+pandas = ">=2.2.2,<3.0.0"
 psycopg2-binary = ">=2.9.9,<3.0.0"
 sqlalchemy = ">=2.0.23,<3.0.0"
 
 [[package]]
 name = "eflips-schedule-rust"
-version = "1.0.1"
-description = ""
+version = "2.0.1"
+description = "Vehicle Scheduling in Rust for eFLIPS."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:4888c5222914f08ba347c7a4fb2ebd771abac26de57f5f86dd9608667af268e4"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:f4692d4b945f150e61f651c0c1766e3d86d2440ebb3d3fca713711382531ff0b"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0277b47e158da7acf82c392ef8c5f36eb779953329d221b50c8e78421a255878"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:60ac84639db7086bb87cf54dd33a4aa3782e03b824a95461cc2d65ac1e10e848"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:e672255f039fb68d77721450ac9b7a563b16e2264e74e744f8e1b18c87f5304b"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:1c47f8f27e179501cada608dff3464711ad7baded4bb38aa299236a150a7a47a"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3861404829b921d4ea36ad0fa8baa496175712613f266aaa0294f7dd8e8e47cf"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:61fb8b4b753559c88d605ecb4828b11e16846d6e54c65785d965b80112247398"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-musllinux_1_2_armv7l.whl", hash = "sha256:eb64a2e3fa84070f3cc9a1566945060eced5f7868749c4c4474db3b7fa70f042"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-musllinux_1_2_i686.whl", hash = "sha256:c22838c07ed5412a17b12b8be54428597268c225e81ee799592e7725cfdae9ff"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:04b1a1dc46394fa71cbd2e91874f0a9f2c92e81d236f5fa6b25033bed29ef810"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-none-win32.whl", hash = "sha256:fcbeb576b1f89fedcc84c89f7a0187f7f24a97127bccecaaea35e9aa77327c65"},
-    {file = "eflips_schedule_rust-1.0.1-cp310-none-win_amd64.whl", hash = "sha256:806e448cc4212a752cfb8fd63db0a7e8c53858d0bf2f7fbb6f52902495a2c1c2"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:007f43b3e5292f5b9e8109801703206fdcf9277ec8c2f695239f4e50aae719d5"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:c3ed1c45ed6af1a3f56e71c81ae7e5d974b331e008da6269524a33a5280f3df8"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:5822bff02964b722611993fd6c1aee6b65b774dfd6e2d57d578cc27a5c2926a1"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:c739fdf002a3d6c7c51a18679691c80cb52d301d54b7a5e6fc56bd0e13822f6c"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:555f5f7dde0a570de05e756c198947385435534af108efd9a2a2fef1af2b2c0f"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:880edbe4b0f003b6f3d04b9289671fcd663ae4573ad000153b76a9dc1bd50642"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:6fecfe20a78a58fc887d67cf41d251dfed4f015a881b7ebc8864cfe818843131"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f5deec782c193aa633404580a9ba76551daf10f4093a6c44ae7f802a8b549ebc"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:a81754bc99194d2d8ef4c7241f0e2ee013388e73dd235d07d820ed556df5fc21"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-musllinux_1_2_armv7l.whl", hash = "sha256:73972df7adb94a392a880a77281ad94f7bf80f6e4a4dcadcba6fc007c249fa8a"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:7ea66cee100823a0833310057da7c4c71aca58913f859eedbfdd422ecd836434"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:f32fdafd1d9b629096e3e3fec6e0e1ebabd55346efccdf6e8253ef1fae0ea01a"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-none-win32.whl", hash = "sha256:6ad29aadbfd9f494e53bc380913aae5ea6bc776d9d60f98d301b104fb5b6e6e2"},
-    {file = "eflips_schedule_rust-1.0.1-cp311-none-win_amd64.whl", hash = "sha256:6344bc6097a16823bccd15c2c065dd0ed186a31e1987f5c4d1d2738c9824c9ec"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:07380a0c53c7341f2fc3c12e5cea870f8571208caa6452660d16a6555dec756e"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:53a260ac1293f5bd3c7c2632bac6676a75df7f044bae5801b60cf4b8a91dc04f"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:318035045a6835b2415524578591313721faec22d4f0b16923820bbd1c839115"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:62e5fd7afb84eaa9242a5ad98b7741800b5dc316ad80ef57559aea97a7e815a4"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:a065a067a6a1158aabe64bbd2abd1e30d0b0dbf3a107b2568b74c92a03eb2b57"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:6af847bc8ee2515064e49034d188d88e3c6b10c39c2e00e1aff6aee92e67f466"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:0e70a5537672f7303a6d7085d24ff74cfe6af87ce1a8fc7b1609fd05f54988b6"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cdf32bf3aa52e3b36c8603ba7c38364e2adecc4f5f25156837c84fc71d81ee8c"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:6ab6ebe3925fa06a7826c3d06129ed28a0b83cdb89d701da531003fd966ed214"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-musllinux_1_2_armv7l.whl", hash = "sha256:c753609fd1857fc9d44b971ac5b62402df365c68574a2501356fdbb8bfa50153"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:34eece0649004405f98ee18fb660631640bb39f1252d23c94ac9527edf230f0d"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:6437c1381e4a9452930c9236c07c4f75109e454203fcd0c94b1f6cbe1f11dff1"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-none-win32.whl", hash = "sha256:8c1c4715e6ccc040fe67c4b6303402684db55cb22efd0afc9afd8d12c6f45c4a"},
-    {file = "eflips_schedule_rust-1.0.1-cp312-none-win_amd64.whl", hash = "sha256:2d08c140849a921c312e9f81030fbbe89c422bc8e4f39df5757f1def92aef82c"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:ea9c47c12bf233dcc0676d14de5a71cae04e0674b5f9ca8bf061e59e30c9ccb0"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5b896b45da2fd025a2715b8f8566b9e9a1d524c836885f6672dd4c408254da76"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:5f50f0b9c59b4d594f1468c4c19276b40aef43cc43e86b29c78bb16608ca5f06"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:db3515cd07cbf92de8e4d9dced68a9ea66c625387fc67ede0688c38d06e4cf26"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:3b7a123256ed7ba26bbc8e9796278dfa88cb42da918515bb9b191bc0f989b409"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:35d835faa2c70aa9ed95c406271e1fd853a7d1fcc98bd05d6e967c046fdb931f"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-musllinux_1_2_aarch64.whl", hash = "sha256:5c9d556701a743c1c014ad62a954b8e6403d8b3b298c09764a7b5e28b02a4088"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-musllinux_1_2_armv7l.whl", hash = "sha256:94319654e4d79dadd6211e5666cc5fdb6ecffb35304c7f533c429e40b5e39cd2"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-musllinux_1_2_i686.whl", hash = "sha256:fc17c08204e08bb7e15bfc32b27e4323f00202ae29f6f9cf1be9cfc8daf27654"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-cp38-musllinux_1_2_x86_64.whl", hash = "sha256:adcdb01126014fd142edac1dae3c2bc1356da5a5a166ce621b7ac863e01248e5"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-none-win32.whl", hash = "sha256:e28f69ef02dad861f371484efec16617b7655f6f270ee843d9ffa207d3e36f8d"},
-    {file = "eflips_schedule_rust-1.0.1-cp38-none-win_amd64.whl", hash = "sha256:36763e64e8c6e31baabe6a8bfd12e40c71c70df5fe32ee348b7bb49e7445c1cb"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:888c4f85e54631bca851e047605795845732cd3eb411322c71fc5ffb2c12735e"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:7e6e2017441b69d536afb0c4610081e95ff9d1305276c33dbb6eb3cfc123adc9"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ddd9985977671bccb7caf15bd45c5d28b09720d34ef78b96e3d3330b39cb190b"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:ef96a13bfb89ca534e7a2caf669173785e552de2eef3de487e00fb94f474cc8d"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:097104711d01d8e256e95a37522bd44f7cf28290b725e30f6dc7d620c11728e3"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:135c2257bf0451a181d305c636048b3ff9be9a73798242c30d3f13fed3afc8a3"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b0d5c1c802f2f23dcbf0f3e1590f519d88081779ecf1fa30985034878228f821"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:889ac91f8864bf67693faa5d7419322e4da56b573f21d2513df191774af22813"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-musllinux_1_2_armv7l.whl", hash = "sha256:bd611a313707ef0179844fb7d9a500b7b3659856b095a56b469bf77fbbd4441d"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-musllinux_1_2_i686.whl", hash = "sha256:c1f01bb877ee5719029bd6a786ef37f70bf37cedee54973736b181606a097869"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:b33c5bbb725c67b0728ef03b53d05696194582d889d94a2e94cfdbf9a11c825c"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-none-win32.whl", hash = "sha256:1cfb10d49adf7a6768fe0c375a5a95c0ea30cb27bd9e508da7b07c1719b86e4b"},
-    {file = "eflips_schedule_rust-1.0.1-cp39-none-win_amd64.whl", hash = "sha256:d0bcea5a3ed22c1f95248cf1b84e437848fe2214856c0dc913e77badd67ab8a3"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:ba40dcfebda652db15db177228e326886a347278da1a9357c04072c93226b890"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:de859310d4f337f5d549b614d1c92a16248d3764a2038eba69d907b86a115cda"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:1fa351602b74443637aef6c5c1f22a287fbdbdc05f7676137cba821222b3d8a5"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:3ca57421f2997208c4970e30b3154298b95a3ebae26674b5571c65552cb8e794"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:f7a187e6c569607c8314430f02c51abb92fb51efae8ae719e9f06cd54a7b9164"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c81bdc6b200fb4074beccb6673e2522c000596f216b4f9718d1b4e9818abfff0"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:b34c977a5676e0b7020a40df6513864e534a937e735365a67bfac3cbb304d43b"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:3e9af049558c1b0db8ae5f3cea2f5ee8f8851c186c984e7f0549bf3015a9d055"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-musllinux_1_2_i686.whl", hash = "sha256:930229738451e0a128b69c189bc3389991a5f7286e6899a8d544a838957ef3c3"},
-    {file = "eflips_schedule_rust-1.0.1-pp310-pypy310_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:567fbad9ed7db16c38cc12f2a3756b10dcdfd1dac8e01270b9cd081b14738ab8"},
-    {file = "eflips_schedule_rust-1.0.1-pp38-pypy38_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:adb4c5efdf3f4b07aadd27e35a0c0afca39cdbc7211ff4977db384c402580eae"},
-    {file = "eflips_schedule_rust-1.0.1-pp38-pypy38_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:0391fd6ead9105afd8183a6c2e73a31e49d538cbcfdb9a1380594dbede92be50"},
-    {file = "eflips_schedule_rust-1.0.1-pp38-pypy38_pp73-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:22bb37d31c67981225897a9d92ad8109fbc22b7f1155b8b57d118d03344d4baa"},
-    {file = "eflips_schedule_rust-1.0.1-pp38-pypy38_pp73-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:0d8699ae6a7a5b5ac8a7d35eabf7f83e128dfbf13165998d97447985825c9278"},
-    {file = "eflips_schedule_rust-1.0.1-pp38-pypy38_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:44d3246c825dbf61779d27cc241ccdb98728ccf4fa23379b48b834723a127c53"},
-    {file = "eflips_schedule_rust-1.0.1-pp38-pypy38_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:2b80a27217902e1bd3dab0ef7f47fbfad8adb5f23738e6a7c1874c64b408bb92"},
-    {file = "eflips_schedule_rust-1.0.1-pp38-pypy38_pp73-musllinux_1_2_i686.whl", hash = "sha256:c913bff6ce62167552d733684eae00f9660b70c1f78c0895f8473f0549c8c011"},
-    {file = "eflips_schedule_rust-1.0.1-pp38-pypy38_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:a2900e158aca1dfdc2377353fa784935ea1604b44b03aa48f9c9dd8b3af984e5"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:42e6a3755c9207193cecb397e75ba63c30a92290da00769e2569e7b70775fd48"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:568a576f1571daafb7a38b95b5b659a08037a17f31680312715746835e2c8089"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:ad5eaa34982cbbaa968adb7b7d820f9de2e0b785bfd34bf492723ba71777d438"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:1ad036d60ce3d2b60c94cb39f1586371a865f99606704554cdfec54bd98f7d34"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:e498136876f95c720927af380659ef8bfe6b21320eecada32d70eb2c80be43c4"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9621511dfc86dc66a3343d2f1d40f4a7399b55cefc1baaf367eceeead51c610c"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:b55d4463ba4cee355ff12d18131f349035a1bdeaf52859a2980df307690b92d8"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:69915ea380758826d429d900ed7a8634904e45eb2dd249ac4e7a7c62f6abaf70"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-musllinux_1_2_i686.whl", hash = "sha256:b0f7e0ef251db4e326b028441645f227e64211ec7d0b2afe0703238af00de4b1"},
-    {file = "eflips_schedule_rust-1.0.1-pp39-pypy39_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:bcae712f05ea1eacf1420fe72471a4fc68acfae35de112d39834c119535b5c54"},
-    {file = "eflips_schedule_rust-1.0.1.tar.gz", hash = "sha256:d9ce56411521676cb3b41bdae6762b1c87ecde32784729f3d5d92b9282bab105"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:bbc5cfec0d7c5441b16a22b6a20a4dbfe6b117ab21a1c5e1789eb39d5d89a449"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fe79d7b57aac5c0733eebd0d48568916ed708a44dbd2b0209def5de59623628d"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:21a51a1dfaa3dc4a6af7ecb3b7c56100ddcec2765c37e890a5324b6cee911c95"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:84fafa16252a3aaf7e34fdb8aa98d0963cb8420aace8d20134435d1eaf148a9f"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:6cfa67faf2fee1fbf89a492e89cbb7b3b00bcc300287ff5f1f6ba0c593ae98ac"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:09c8303a044c9cda34fa0966b5d6f194e49d36d2d59c3b57336afe22e4b27ffd"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2b0662f6c66cda1f1e0b81c918b001a4e4734622ec8e28133d32285809205329"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:c670c6161f6f77e8f42c5dc0144c44e3d14b36fc938451206839f19bfbc91054"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-musllinux_1_2_armv7l.whl", hash = "sha256:c2813b2be1013691cb0a850a8297763690929d37afb137a70270cc7c91836dff"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-musllinux_1_2_i686.whl", hash = "sha256:9661a1469edd2394a4b8a99c176933339ff0fbd4d49c1df8ad6175ff825cbac5"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:61cd4d9d5a5f75b1c52999042b331cb5b16b4b6aa90aece57a45a99205951b99"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-none-win32.whl", hash = "sha256:8a8efd6f7830376f1f9f1d624fd36fd97a9218eba8b9edcee47571ddc4f45c46"},
+    {file = "eflips_schedule_rust-2.0.1-cp310-none-win_amd64.whl", hash = "sha256:97ff359803205e88aa1966387931b428f83d3aef932f5dab972f104d4cfc5a77"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:057c262d9f6edebb99ffd9a51f6000b1b8d17c9170bf1327b6c4869b9eee6d74"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:cd50ca54831fbcf668affed34944a11523a48b9b723e47a94a15bc8f87e465a4"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ce9ed1e86083f370a26b4ea0c8bf5fdee4b5cc6e0932243249cd2b2a15cf5de0"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:0e0c7c93553d8ea050e871acc3e6ecd3ef1f941af8a26c67dacf0f77e51f50fd"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:ad2309e12e7a3efa9bfdc4fa605ab61d6324eb1f29b87c27d54e6692f93dfc26"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:6f8123f803ed35ac240caa00683deb89c96fb02c677b9b62d734ad2dc98cda87"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:cd25e3b3f93fe35895a962f836ba3da2f5a890be6a5b06f487849b3b9822da42"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:23b43c5947c56d1e4449747599af2381a502d7c6929c6a49d264b43acf47619f"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:fee7388ca93e5b2316b5dd95a906a7674ac4967650361f5233ca08fe4d996b9d"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-musllinux_1_2_armv7l.whl", hash = "sha256:ede4d311229b22c14d03dc0d2d221ee51c36fa7a56709897d7b3cac568dd3562"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-musllinux_1_2_i686.whl", hash = "sha256:b73d2e7ff8ce32f644e5603d2c81c272bf3854b7c5e3bdb600a456ad36ce754b"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:85418341049c9ff54142cbeb6446c7d114ed06b717a9c069cb0c65c5c2f99eab"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-none-win32.whl", hash = "sha256:726597cebacc2222102d856129b608071c8f57fc6bdf60812814e70cc9ec4fd7"},
+    {file = "eflips_schedule_rust-2.0.1-cp311-none-win_amd64.whl", hash = "sha256:9bc3650e48b313798b02d0ba11288d343e8793df6d8104806492cfd8dca59a72"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:41af5ba5d9aa0adc54f03817968ecd36e52eda2a65b04942198bca67b5487a6c"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:6690e0f3bcfa37a57628275055f0d06b2700ae84cd2ea07489e41f77e2910579"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1186021cc43c3019ee18a94bb48c79cbe248e394f8c6d41e14c46c3be57fec6f"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:e57a0c1c965cf49f739bb3ffc29214eb8898cfb9878d2b010fa18372e43d51b1"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:d35a051a6fb97379f3185a7533dbe897ca5621d2e91d005c93ebfe7e08919579"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:ee92440b3f475da48bd27dd38d43c22389bd0a88b7f869111715516f3a6ab693"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:c529f14f73d7ff0cf2f2b76b1a98957a5d124e931badc25156b7ec0909eb75fb"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d37ff9d5cfe151878cdd821ac5f7fe6833f136ddb0bc1147dbf7a090bf5dc005"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:8768362629ceea6a29523c5ca2e2384ebded806d575e86b31c95f13a503ee2d1"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-musllinux_1_2_armv7l.whl", hash = "sha256:fe28f248dcc7765737df499a526bad9ce78f8bde6d2221cff013d915e4a8c451"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:2c492396d345fe522696df50df7733688c95bfb9c7c6f85d187e957b4ee090cc"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:b3a5fc3bbb06e799f6fba33a70add6e977979e345d693cb54c960061c206dc03"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-none-win32.whl", hash = "sha256:6775487d0417b97eeb8c895459860b7d0baa94ab006bee4b5d501fc5d50cca22"},
+    {file = "eflips_schedule_rust-2.0.1-cp312-none-win_amd64.whl", hash = "sha256:be87e1c8eb7b86714e175a5d6349cdb19f0e1e9451a4691c2e92a59e1c6ff024"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:38f6f029dc7e9071325192f07f720865453c696154168608b2ae73325f162ee4"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:8ba9cb372e168cb79ff974a9d152bf6233b61fe167812700546a1a8be040d29b"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:fa9996f9285f3edb15da00242355e66ad0867dba621b64ed5c0aa18ec17b2048"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:cda39612bdab89e28cb011717b62e46d995ecc0722bfac29df4fc35f3616576e"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:7f200fcb32e4c0c946ab4a88cf2a9d17665535093b68d3479b451109ed6f5ec0"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c999a036afcbc1c4a7141007dc9be9579816b2d8ac61ecb0e12fe3c0966937ad"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-musllinux_1_2_aarch64.whl", hash = "sha256:6a5cc6c40e45ead0da1a99c5ef4eab06050e9eb069bf264248412201c9a38809"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-musllinux_1_2_armv7l.whl", hash = "sha256:f0006bc6da7749cb2d9254d772e4a9c6d540a5fc0ab20b6eac27ea6689330fd0"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-musllinux_1_2_i686.whl", hash = "sha256:a8c61e0886fd6dabf9784ebd2887fe75b3a12b56be55e3ec4b36c325b95a1579"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-cp38-musllinux_1_2_x86_64.whl", hash = "sha256:119b3b76e583bd2fdcf4a006e1f9be4595a04fc2c09f4f8625ca32fd9287d7fe"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-none-win32.whl", hash = "sha256:4ee01c9244486b0843511125e0581382cd4b6e676951407b5e426d29f4b3ab02"},
+    {file = "eflips_schedule_rust-2.0.1-cp38-none-win_amd64.whl", hash = "sha256:3a5038deb974eee1e24f67bb48c599e2b30dec922cb24b9adf67ce122d6a5d34"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:9e1c38d0996881b3481a2bc9f08c0a04f86cccb4ae486f71163485f6004925d3"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a1a65227c63798d723ea85f54949b98e7a63b695125c8cd7fb110a5b1344fdfc"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:b726332cefe455d236fa91e4d6eb304f012e8b5b7701d518f0ffa694b8f0eaf2"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:92ee4a402fbedf428cee05af0a84c7cb79218c4f7b9c7f60d48a9f9907ccdb43"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:9e8b0d36779682f0f82d6086ab9aa1e9d7760ae3760ec5f7964da60c1622b7d9"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:ce78ee8db5e846f4604804d00319e17380fe0db8ae3ea90eb43fae2536445fbd"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f49e97abca0b1315c04f04655f12f4f03a9dfd60a53b7f52f79d19b65cf8dc7b"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:3780fa91d16212b6e556f0bb99ac3cfb9cf8f6bea14afa42159dd6a9a0ff2f14"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-musllinux_1_2_armv7l.whl", hash = "sha256:9937f54c8656eb742cbafcbb03fae82ed95508bb73b973556d4b4269ac353dd3"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-musllinux_1_2_i686.whl", hash = "sha256:dc3b12f246cde3cdcbd247ec27078326e68462a01480967c2e296d4c8db4ab8c"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:e62b2a2bb0ed5fa6537415c654243dbc66d684ec31b0507c89931181e923d902"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-none-win32.whl", hash = "sha256:7053ae0a7db337ebeb3f9a3212859cd0267f9e1435ca36f82cb930a285b50d23"},
+    {file = "eflips_schedule_rust-2.0.1-cp39-none-win_amd64.whl", hash = "sha256:9480d9bcaad48c284ac0da0d5a682985544f48974079c2219e237e7376f3995b"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3721795f32bd17dc003592f2523aba2996f324d56ef0e9a57a6cd62a545263f2"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:61ff8e626cfa59675cce8145fb0b6b12c6c42ad8c1992f7842bd7624f54a4034"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:15d4fba07d14b16cf0ffcca65fa6eff92585d5075347f371b471107a22ea2c03"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:bfacdaf456716a3b8d0cc21bfd012104f574b04696eb0f0c6178782c023f4af8"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:3f70ca70fe297a274b89ab6c24fae3c2171c0d003a52b84301a0af8133a52f04"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7f3475594a6e5c4023687da0d700541cacd2464f3abb9681d4f039363f0e7831"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:bfd73e24cbd390f123582c4a27d68d67a2d68558cf3e6f43b7440d36704abfe9"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:513980d5fd1e0c42c17f3530ded129374a5ce73b150831067760643fa591e46d"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-musllinux_1_2_i686.whl", hash = "sha256:6b9b7aad43acefe01ba996d5870f52db9146278dbd454f3833fd8c649eedd037"},
+    {file = "eflips_schedule_rust-2.0.1-pp310-pypy310_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:98f5f30af2c1a4701719a84dbddc82494420e97cb20917855c04e8e3db709bf0"},
+    {file = "eflips_schedule_rust-2.0.1-pp38-pypy38_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ae929cf5ce0ba93e1e9f8d27e670836962457f9abc7f9a3e91c06f1cde5ad9eb"},
+    {file = "eflips_schedule_rust-2.0.1-pp38-pypy38_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:0d1de9e3bb3012ab934494d83272332f72c618b07072e21e2dd41ffad110c8ab"},
+    {file = "eflips_schedule_rust-2.0.1-pp38-pypy38_pp73-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:b3dffb298b48aa8f1d55c37505aea251010229b37b4b78247b9fab0cd82c4650"},
+    {file = "eflips_schedule_rust-2.0.1-pp38-pypy38_pp73-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:4b8e277556d11c316c89be7a03124770d7452775a679ba9967b2af888b3eac05"},
+    {file = "eflips_schedule_rust-2.0.1-pp38-pypy38_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:9120c7be4de51e6d2162f79a1999138598ea77830cabbf3d984df1da4e1b81ff"},
+    {file = "eflips_schedule_rust-2.0.1-pp38-pypy38_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:76fa5cdfca3903b0d375a3c623d200331076f30998a1b2d6dccd84e62c03b405"},
+    {file = "eflips_schedule_rust-2.0.1-pp38-pypy38_pp73-musllinux_1_2_i686.whl", hash = "sha256:5c4d5ee62b57ba9bcab8fcf452cfe829fed037f363d98b1635a5b62c4d679f88"},
+    {file = "eflips_schedule_rust-2.0.1-pp38-pypy38_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:d49ab59c55e49f92f59e68afb270499d806f7b0b78bd657995ab21e13a3a9def"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:59f56314c0b58e52b99f2bf4e3b7352ce76b20c54faeedb09f1973819f58b170"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:6198d17e041548353e51ae45e204030d489678fafdb195b499da268377eb52b1"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:c03c1edcdf9ae77e3904a89df939bc9ea98ca49dd0f8f6c995108c57c7e47959"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:87b11774304ac47d4e659d22c60f462376349ae5e0a2d91f5717394dd56376f9"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:31c73718ab5bb583af4bc6ef5461e44582d7a07a14f592543ebc3b2aa02f05ac"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b42e238aeddfef99c7c8068c1e42f8526194913ed1f9b7aead22234362ec35a3"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:1cba2fa0dcc4d6d81fa5356ce7f772ff64807e72f7781673646f0faac3dfdd4d"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-musllinux_1_2_armv7l.whl", hash = "sha256:e12babe5f05e2e8f3570d0fbd2e94238ee10ef50eab914762d0c84499af4510d"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-musllinux_1_2_i686.whl", hash = "sha256:1e53660e7666fa2303251c06d74b9b45f76d7fcb08b2ac9ad4faea5dfaefa888"},
+    {file = "eflips_schedule_rust-2.0.1-pp39-pypy39_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:3d1ef0fe50899e215cedb0d17d9ff951529188ec36b49f4ee65c0d906579813d"},
+    {file = "eflips_schedule_rust-2.0.1.tar.gz", hash = "sha256:fcbbfc2527c97e31c080d8954ea1d01de752a04841e358b5f58bab9fa3fd05b5"},
 ]
 
 [[package]]
@@ -905,20 +907,21 @@ files = [
 
 [[package]]
 name = "networkx"
-version = "3.3"
+version = "3.4.1"
 description = "Python package for creating and manipulating graphs and networks"
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "networkx-3.3-py3-none-any.whl", hash = "sha256:28575580c6ebdaf4505b22c6256a2b9de86b316dc63ba9e93abde3d78dfdbcf2"},
-    {file = "networkx-3.3.tar.gz", hash = "sha256:0c127d8b2f4865f59ae9cb8aafcd60b5c70f3241ebd66f7defad7c4ab90126c9"},
+    {file = "networkx-3.4.1-py3-none-any.whl", hash = "sha256:e30a87b48c9a6a7cc220e732bffefaee585bdb166d13377734446ce1a0620eed"},
+    {file = "networkx-3.4.1.tar.gz", hash = "sha256:f9df45e85b78f5bd010993e897b4f1fdb242c11e015b101bd951e5c0e29982d8"},
 ]
 
 [package.extras]
-default = ["matplotlib (>=3.6)", "numpy (>=1.23)", "pandas (>=1.4)", "scipy (>=1.9,!=1.11.0,!=1.11.1)"]
+default = ["matplotlib (>=3.7)", "numpy (>=1.24)", "pandas (>=2.0)", "scipy (>=1.10,!=1.11.0,!=1.11.1)"]
 developer = ["changelist (==0.5)", "mypy (>=1.1)", "pre-commit (>=3.2)", "rtoml"]
-doc = ["myst-nb (>=1.0)", "numpydoc (>=1.7)", "pillow (>=9.4)", "pydata-sphinx-theme (>=0.14)", "sphinx (>=7)", "sphinx-gallery (>=0.14)", "texext (>=0.6.7)"]
-extra = ["lxml (>=4.6)", "pydot (>=2.0)", "pygraphviz (>=1.12)", "sympy (>=1.10)"]
+doc = ["intersphinx-registry", "myst-nb (>=1.1)", "numpydoc (>=1.8.0)", "pillow (>=9.4)", "pydata-sphinx-theme (>=0.15)", "sphinx (>=7.3)", "sphinx-gallery (>=0.16)", "texext (>=0.6.7)"]
+example = ["cairocffi (>=1.7)", "contextily (>=1.6)", "igraph (>=0.11)", "momepy (>=0.7.2)", "osmnx (>=1.9)", "scikit-learn (>=1.5)", "seaborn (>=0.13)"]
+extra = ["lxml (>=4.6)", "pydot (>=3.0.1)", "pygraphviz (>=1.14)", "sympy (>=1.10)"]
 test = ["pytest (>=7.2)", "pytest-cov (>=4.0)"]
 
 [[package]]
@@ -1854,4 +1857,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "bf0d1f5c68b7a0f86903bf4c5a9a57ca6ee0ad6682410adb31c6f10814ca7e4a"
+content-hash = "91b81fc8fb9a2e3922fda650e6b4e1072e59cc89a0c711fb4ac887ab198e5a32"
