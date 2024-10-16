@@ -62,6 +62,12 @@ optimizer.write_optimization_results(delete_original_data=True)
 
 ## Simplified Electric Vehicle Scheduling Problem
 
+---
+
+This section is not current, it will be updated soon.
+
+---
+
 Example scripts for the Simplified Electric Vehicle Scheduling Problem can be found in the
 `examples/simplified_electric_vehicle_scheduling_problem` directory. It creates a graph of all possible trips and
 their possible connections. The minimum number of rotations is now a 

@@ -1,8 +1,8 @@
 import os
 from datetime import datetime, timedelta, timezone
-import plotly.graph_objects as go
 
 import eflips.model
+import plotly.graph_objects as go
 import pytest
 from eflips.model import (
     Area,
@@ -26,8 +26,8 @@ from eflips.model import (
     VehicleType,
 )
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from eflips.opt.depot_rotation_matching import DepotRotationOptimizer
 
@@ -457,6 +457,7 @@ class TestDepotRotationOptimizer(TestHelpers):
 
         session.rollback()
 
+    @pytest.mark.skip("This test is not working in CI due to no OpenRouteService Server")
     def test_data_preparation(self, session, full_scenario, optimizer):
         user_input_depot = [
             {"depot_station": 1, "capacity": 10, "vehicle_type": [1]},
@@ -503,6 +504,7 @@ class TestDepotRotationOptimizer(TestHelpers):
             session.query(func.count(Rotation.id)).scalar() * len(user_input_depot)
         )
 
+    @pytest.mark.skip("This test is not working in CI due to Gurobi license missing")
     def test_optimize(self, session, full_scenario, optimizer):
         user_input_depot = [
             {"depot_station": 1, "capacity": 10, "vehicle_type": [1]},
@@ -528,6 +530,7 @@ class TestDepotRotationOptimizer(TestHelpers):
         optimizer.write_optimization_results(delete_original_data=True)
         session.commit()
 
+    @pytest.mark.skip("This test is not working in CI due to Gurobi license missing")
     def test_optimize_with_infeasible_model(self, session, full_scenario, optimizer):
         user_input_depot = [
             {"depot_station": 1, "capacity": 1, "vehicle_type": [1]},
@@ -542,10 +545,7 @@ class TestDepotRotationOptimizer(TestHelpers):
         optimizer.get_depot_from_input(user_input_depot)
         optimizer.data_preparation()
 
-
-
         with pytest.raises(ValueError):
             optimizer.optimize()
-
 
         session.rollback()
