@@ -457,7 +457,9 @@ class TestDepotRotationOptimizer(TestHelpers):
 
         session.rollback()
 
-    @pytest.mark.skip("This test is not working in CI due to no OpenRouteService Server")
+    @pytest.mark.skip(
+        "This test is not working in CI due to no OpenRouteService Server"
+    )
     def test_data_preparation(self, session, full_scenario, optimizer):
         user_input_depot = [
             {"depot_station": 1, "capacity": 10, "vehicle_type": [1]},
