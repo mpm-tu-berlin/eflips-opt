@@ -1,11 +1,11 @@
-[tool.poetry]
+[project]
 name = "eflips-opt"
-version = "0.1.3"
+version = "0.1.4"
 description = "A collection of pre-simulation optimization algorithms for eFLIPS."
 packages = [{include="eflips/opt"}]
 authors = [
-  "Shuyao Guo <shuyao.guo@tu-berlin.de>",
-  "Ludger Heide <ludger.heide@tu-berlin.de>",
+  {name = "Ludger Heide",email = "ludger.heide@tu-berlin.de"},
+  {name = "Shuyao Guo",email = "shuyao.guo@tu-berlin.de"}
 ]
 readme = "README.md"
 license = "AGPLV3.md"
@@ -27,6 +27,7 @@ networkx = "^3.3"
 scipy = "^1.14.0"
 tqdm = "^4.66.4"
 eflips-schedule-rust = "^2.0.1"
+dash-cytoscape = "^1.0.2"
 
 [tool.poetry.group.dev.dependencies]
 pandas-stubs = "^2.2.2.240603"
@@ -35,7 +36,6 @@ black = "^24.4.2"
 pylint = "^3.2.2"
 pre-commit = "^3.7.1"
 mypy = "^1.7.1"
-dash-cytoscape = "^1.0.2"
 types-tqdm = "^4.66.0.20240417"
 
 [tool.mypy]
