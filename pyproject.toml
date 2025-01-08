@@ -2,19 +2,21 @@
 name = "eflips-opt"
 version = "0.1.4"
 description = "A collection of pre-simulation optimization algorithms for eFLIPS."
-packages = [{include="eflips/opt"}]
 authors = [
   {name = "Ludger Heide",email = "ludger.heide@tu-berlin.de"},
   {name = "Shuyao Guo",email = "shuyao.guo@tu-berlin.de"}
 ]
 readme = "README.md"
 license = "AGPLV3.md"
+requires-python = ">=3.10"
+
+[tool.poetry]
+packages = [{include="eflips/opt"}]
 
 [project.urls]
 Repository = "https://github.com/mpm-tu-berlin/eflips-opt"
 
 [tool.poetry.dependencies]
-python = "^3.10"
 eflips-model = ">=3.0.0, <7.0.0"
 pandas = "^2.1"
 shapely = "^2.0.3"
@@ -42,5 +44,5 @@ types-tqdm = "^4.66.0.20240417"
 plugins = "numpy.typing.mypy_plugin"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0"]
 build-backend = "poetry.core.masonry.api"
