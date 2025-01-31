@@ -78,7 +78,7 @@ def create_graph(
     minimum_break_time: timedelta = timedelta(minutes=0),
     regular_break_time: timedelta = timedelta(minutes=30),
     maximum_break_time: timedelta = timedelta(minutes=60),
-    longer_break_time_trips: Dict[int, List[int]] = {},
+    longer_break_time_trips: List[int] = [],
     longer_break_time_duration: timedelta = timedelta(minutes=5),
     different_line_malus: int = 0,
     do_not_cross_service_day_breaks: bool = False,
@@ -98,6 +98,8 @@ def create_graph(
     :param different_line_malus: If two trips are on different lines, we add a malus to the wait time.
     :param do_not_cross_service_day_breaks: If True, we do not allow connections between trips that cross the service
     day break.
+    :param longer_break_time_trips: A list of trip IDs that require a longer break time.
+    :param longer_break_time_duration: The additional break time for trips in longer_break_time_trips.
 
     :return: A directed acyclic graph havong the trips as nodes and the possible connections as edges.
     """
@@ -148,8 +150,7 @@ def create_graph(
             # If yes, we add 'longer_break_time_duration' to the base minimum break.
             effective_min_break_time = minimum_break_time
             if (
-                trip.rotation.id in longer_break_time_trips
-                and arrival_station.id in longer_break_time_trips[trip.rotation.id]
+                trip.id in longer_break_time_trips
             ):
                 effective_min_break_time += longer_break_time_duration
 
