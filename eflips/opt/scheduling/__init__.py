@@ -79,6 +79,8 @@ def create_graph(
     minimum_break_time: timedelta = timedelta(minutes=0),
     regular_break_time: timedelta = timedelta(minutes=30),
     maximum_break_time: timedelta = timedelta(minutes=60),
+    longer_break_time_trips: List[int] = [],
+    longer_break_time_duration: timedelta = timedelta(minutes=5),
     different_line_malus: int = 0,
     do_not_cross_service_day_breaks: bool = False,
 ) -> nx.Graph:
@@ -97,6 +99,8 @@ def create_graph(
     :param different_line_malus: If two trips are on different lines, we add a malus to the wait time.
     :param do_not_cross_service_day_breaks: If True, we do not allow connections between trips that cross the service
     day break.
+    :param longer_break_time_trips: A list of trip IDs that require a longer break time.
+    :param longer_break_time_duration: The additional break time for trips in longer_break_time_trips.
 
     :return: A directed acyclic graph havong the trips as nodes and the possible connections as edges.
     """
@@ -143,6 +147,12 @@ def create_graph(
         for trip in trips:
             arrival_station = trip.route.arrival_station
 
+            # Determine if this trip's rotation and station require a longer break
+            # If yes, we add 'longer_break_time_duration' to the base minimum break.
+            effective_min_break_time = minimum_break_time
+            if trip.id in longer_break_time_trips:
+                effective_min_break_time += longer_break_time_duration
+
             # Identify all the trips that could follow this trip
             # These are the ones departing from the same station and starting after the arrival of the current trip
             # But not too late
@@ -150,7 +160,7 @@ def create_graph(
                 for following_trip in trips_by_departure_station[arrival_station]:
                     if (
                         following_trip.departure_time
-                        >= trip.arrival_time + minimum_break_time
+                        >= trip.arrival_time + effective_min_break_time
                         and following_trip.departure_time
                         <= trip.arrival_time + regular_break_time
                     ):
