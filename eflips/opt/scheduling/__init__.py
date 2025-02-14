@@ -27,8 +27,9 @@ import numpy as np
 import sqlalchemy.orm.session
 from dash import html
 from eflips.model import Rotation, Scenario, Station, Trip, TripType, VehicleType
-from eflips.opt.scheduling.util import _validate_input_graph, _graph_to_json
 from networkx.classes import Graph  # type: ignore
+
+from eflips.opt.scheduling.util import _validate_input_graph, _graph_to_json
 
 
 def passenger_trips_by_vehicle_type(
@@ -149,9 +150,7 @@ def create_graph(
             # Determine if this trip's rotation and station require a longer break
             # If yes, we add 'longer_break_time_duration' to the base minimum break.
             effective_min_break_time = minimum_break_time
-            if (
-                trip.id in longer_break_time_trips
-            ):
+            if trip.id in longer_break_time_trips:
                 effective_min_break_time += longer_break_time_duration
 
             # Identify all the trips that could follow this trip
