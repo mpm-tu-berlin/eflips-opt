@@ -1,22 +1,15 @@
 import asyncio
 import itertools
+import logging
 import os
-import warnings
 from datetime import timedelta
+from typing import Dict, List, Tuple
 
 import openrouteservice  # type: ignore
-
-from typing import Dict, Any, List, Tuple
-
-import sqlalchemy.orm.session
-from geoalchemy2.shape import to_shape
 import pandas as pd
-
-import pyomo.environ as pyo  # type: ignore
-from pyomo.common.timing import report_timing  # type: ignore
-
 import plotly.graph_objects as go  # type: ignore
-
+import pyomo.environ as pyo  # type: ignore
+import sqlalchemy.orm.session
 from eflips.model import (
     Rotation,
     Trip,
@@ -29,6 +22,8 @@ from eflips.model import (
     Event,
     Vehicle,
 )
+from geoalchemy2.shape import to_shape
+from pyomo.common.timing import report_timing  # type: ignore
 
 from eflips.opt.util import (
     get_vehicletype,
@@ -450,6 +445,7 @@ class DepotRotationOptimizer:
         new_assign.to_csv("new_assign.csv")
 
     def write_optimization_results(self, delete_original_data: bool = False) -> None:
+        logger = logging.getLogger(__name__)
 
         if "result" not in self.data:
             raise ValueError("No feasible solution found")
@@ -478,13 +474,24 @@ class DepotRotationOptimizer:
         assert isinstance(depot_from_user, list), "Depot data should be a list"
         for depot in depot_from_user:
             if isinstance(depot["depot_station"], tuple):
-                new_depot_station = Station(
-                    name=depot["name"],
-                    scenario_id=self.scenario_id,
-                    geom=f"POINT({depot['depot_station'][0]} {depot['depot_station'][1]} 0)",
-                    is_electrified=False,  # TODO Hardcoded for now
+                # It is a tuple of 2 floats, where we should create a new depot, if one does not already exist
+                # Check whether there is a station already with the same name and scenario id
+                station_q = self.session.query(Station).filter(
+                    Station.name == depot["name"],
+                    Station.scenario_id == self.scenario_id,
                 )
-                self.session.add(new_depot_station)
+                if station_q.count() == 0:
+                    new_depot_station = Station(
+                        name=depot["name"],
+                        scenario_id=self.scenario_id,
+                        geom=f"POINT({depot['depot_station'][0]} {depot['depot_station'][1]} 0)",
+                        is_electrified=False,  # TODO Hardcoded for now
+                    )
+                    self.session.add(new_depot_station)
+                else:
+                    logger.warning(
+                        f"Station {depot['name']} already exists in the database"
+                    )
         self.session.flush()
 
         new_assign = self.data["result"]

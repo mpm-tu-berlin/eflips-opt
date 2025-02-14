@@ -2,8 +2,8 @@ name: Poetry Check
 on: pull_request
 
 env:
-  PYTHON_VERSION: "3.12"
-  POETRY_VERSION: "1.7.1"
+  PYTHON_VERSION: "3.13"
+  POETRY_VERSION: "2.0.1"
   POETRY_URL: https://install.python-poetry.org
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Run image
-        uses: abatilo/actions-poetry@v2
+        uses: abatilo/actions-poetry@v3
         with:
           poetry-version: ${{ env.POETRY_VERSION }}
       - name: Run poetry check
