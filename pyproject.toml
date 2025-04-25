@@ -10,7 +10,7 @@ readme = "README.md"
 license = "AGPLV3.md"
 requires-python = ">=3.10, <3.14"
 dependencies = [
-    "eflips-model (>=3.0.0, <7.0.0)",
+    "eflips-model (>=3.0.0, <8.0.0)",
     "pandas (>=2.1, <3.0)",
     "shapely (>=2.0.3, <3.0)",
     "openrouteservice (>=2.3.3, <3.0)",
