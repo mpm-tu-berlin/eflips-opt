@@ -365,14 +365,14 @@ files = [
 
 [[package]]
 name = "eflips-model"
-version = "8.1.0"
+version = "9.0.0"
 description = "A common data model for the eflips family of electric vehicle simulation & optimization tools."
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "eflips_model-8.1.0-py3-none-any.whl", hash = "sha256:d6669214609c2abbe6d180c975b0cecaf910d7ed21980b3664d542454f8c0d3d"},
-    {file = "eflips_model-8.1.0.tar.gz", hash = "sha256:0c2e07857fd5aab69fd8281a3e2f7ae8c9747ceef0b02416b5fd7c83c8299bba"},
+    {file = "eflips_model-9.0.0-py3-none-any.whl", hash = "sha256:d12eaf3f6ab823340e06ce9a5516d93a86204fd50b2ffc3170386964038a1e0c"},
+    {file = "eflips_model-9.0.0.tar.gz", hash = "sha256:408fe43742796be71ffc47ba7d854324d87f4c4aacf586116b4f736aa4c0b8d3"},
 ]
 
 [package.dependencies]
