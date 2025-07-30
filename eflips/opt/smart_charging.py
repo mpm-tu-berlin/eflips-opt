@@ -208,6 +208,12 @@ class SmartChargingEvent:
         socs_list = list(socs)
         socs_float_list = [float(s) for s in socs]
 
+        # Handling rounding errors
+
+        for soc in socs_float_list:
+            if soc > 1.0 and soc - 1.0 < 1e-6:
+                socs_float_list[socs_float_list.index(soc)] = 1.0
+
         # Create timeseries dictionary and update event
         tz = time_step_starts[0].tzinfo
         times_datetime = [datetime.fromtimestamp(t, tz) for t in times]
