@@ -2,6 +2,7 @@ drop table public."AssocAreaProcess" CASCADE;
 drop table public."AssocPlanProcess" CASCADE;
 drop table public."AssocRouteStation" CASCADE;
 drop table public."AssocVehicleTypeVehicleClass" CASCADE;
+drop table public."ChargingPointType" CASCADE;
 drop table public."Event" CASCADE;
 drop table public."Area" CASCADE;
 drop table public."Depot" CASCADE;
