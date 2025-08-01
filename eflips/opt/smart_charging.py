@@ -20,7 +20,7 @@ ENERGY_PER_PACKET = (
     TIME_STEP_DURATION.total_seconds() / 3600
 ) * POWER_QUANTIZATION  # kWh
 
-CHARGING_CURVE_SOC_RESOLUTION = 0.01  # The resolution of the SOC in the charging curve, in percent
+CHARGING_CURVE_SOC_RESOLUTION = 0.1  # The resolution of the SOC in the charging curve, in percent
 def max_charging_power_for_event(event: Event) -> float:
     """
     Find the maximum charging power for an event.
@@ -39,7 +39,9 @@ def max_charging_power_for_event(event: Event) -> float:
     all_powers = [p[1] for p in charging_curve]
 
     # TODO
-    assert len(set(all_powers)) == 1, "Charging curve must have a constant power draw"
+    # if len(set(all_powers)) == 1:
+    #     print("try piecewise linear")
+
     vehicle_max_power = all_powers[0]
 
     charging_process = [
@@ -98,9 +100,7 @@ class SmartChargingEvent:
     energy_packets_transferred: npt.NDArray[np.int64]
     """The number of energy packets transferred at each time step (this is the result)."""
 
-    charging_curve_values_in_rate: List[float]
-
-    charging_curve_slopes_in_rate: List[float]
+    charging_curve_values_in_rate: Dict[float, float]
 
     @classmethod
     def from_event(
@@ -172,10 +172,9 @@ class SmartChargingEvent:
         )(full_socs)
 
         full_power_rates = full_power_values / POWER_QUANTIZATION
+        charging_curve_values_in_rate = {round(soc, 4): value for soc, value in zip(full_socs.tolist(), full_power_rates.tolist())}
 
-        full_power_slopes = np.diff(full_power_values) / CHARGING_CURVE_SOC_RESOLUTION
-        # Append the last slope as 0, since the last SOC does not have a next value
-        full_power_slopes = np.append(full_power_slopes, 0.0)
+
 
         return cls(
             original_event=event,
@@ -183,8 +182,7 @@ class SmartChargingEvent:
             energy_packets_needed=energy_packets_needed,
             energy_packets_per_time_step=energy_packets_per_time_step,
             energy_packets_transferred=np.zeros(len(time_step_starts), dtype=int),
-            charging_curve_values_in_rate=full_power_rates.tolist(),
-            charging_curve_slopes_in_rate=full_power_slopes.tolist(),
+            charging_curve_values_in_rate=charging_curve_values_in_rate,
         )
 
     def update_original_event(self, time_step_starts: List[datetime]) -> None:
@@ -417,8 +415,91 @@ def solve_peak_shaving(
 
     # Define constraints
 
+    # Constraint 1: Charging limit - only need to constrain when vehicle is present
+    if not support_charging_curve:
+        def charging_limit_rule(model, v, t):
+            return model.x[v, t] <= model.max_rate[v]  # type: ignore
 
+        model.charging_limit = pyo.Constraint(
+            model.VT_present,
+            rule=charging_limit_rule,
+            doc="Limit charging based on maximum rate when vehicle is present",
+        )
 
+    else:
+
+        print("try piecewise linear")
+
+        model.S = pyo.Set(
+            initialize=[
+                round(s, 4) for s in np.arange(0.0, 1.0 + CHARGING_CURVE_SOC_RESOLUTION, CHARGING_CURVE_SOC_RESOLUTION)
+            ],
+            doc="Set of SOC values for piecewise linear charging curves",
+        )
+        model.charging_curve_values_in_rate = pyo.Param(
+            model.V, model.S,
+            initialize=lambda model, v, s: charging_events[v].charging_curve_values_in_rate[s],
+            doc="Charging curve values and slopes for each vehicle",
+        )
+
+        model.charging_curve_slopes_in_rate = pyo.Param(
+            model.V, model.S,
+            initialize=lambda model, v, s: charging_events[v].charging_curve_values_in_rate[s],
+            doc="Charging curve values and slopes for each vehicle",
+        )
+
+        model.start_soc = pyo.Param(
+            model.V,
+            domain=pyo.NonNegativeReals,
+            initialize=lambda model, v: charging_events[v].original_event.soc_start,
+            doc="Starting state of charge for each vehicle",
+        )
+
+        model.battery_capacity = pyo.Param(
+            model.V,
+            domain=pyo.NonNegativeReals,
+            initialize=lambda model, v: charging_events[v].original_event.vehicle.vehicle_type.battery_capacity,
+            doc="Battery capacity for each vehicle",
+        )
+
+        model.soc = pyo.Var(
+            model.VT_present,
+            domain=pyo.NonNegativeReals,
+            bounds=(0, 1),
+            doc="State of charge for each vehicle at each timestep",
+        )
+
+        # TODO if concave piecewise linear curve, change here.
+        # if there is a model.max_rate[x], that is a non-linear constraint
+
+        # piecewise linear
+
+        def soc_accum_rule(model, v, t):
+            return model.soc[v, t] == (
+                    sum(model.x[v, t_] for (v_, t_) in model.VT_present if v_ == v and t_ <= t) * ENERGY_PER_PACKET /
+                    model.battery_capacity[v]
+                    + model.start_soc[v]
+            )
+
+        model.soc_accum = pyo.Constraint(model.VT_present, rule=soc_accum_rule)
+
+        model.x_upper_bound = pyo.Var(model.VT_present)
+
+        # Enforce: x_upper_bound[v, t] = f_v(soc[v, t])
+        model.charging_limit_piecewise = pyo.Piecewise(
+            model.VT_present,
+            model.x_upper_bound,
+            model.soc,
+            pw_pts=[round(s, 4) for s in np.arange(0.0, 1.0 + CHARGING_CURVE_SOC_RESOLUTION, CHARGING_CURVE_SOC_RESOLUTION)],
+            f_rule=lambda m, v, t, s: model.charging_curve_values_in_rate[v, s],
+            pw_constr_type='UB',  # Upper bound
+            pw_repn='INC'  # Piecewise representation is increasing
+        )
+
+        def charging_limit_rule(m, v, t):
+            return m.x[v, t] <= m.x_upper_bound[v, t]
+
+        model.charging_limit = pyo.Constraint(model.VT_present, rule=charging_limit_rule)
 
     # Constraint 2: Energy requirement - each vehicle must receive its required energy
     def energy_requirement_rule(model, v):  # type: ignore
