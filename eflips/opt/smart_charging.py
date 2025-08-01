@@ -7,6 +7,8 @@ from typing import List, Tuple, Dict
 
 import numpy as np
 import numpy.typing as npt
+from scipy.interpolate import interp1d
+
 import pyomo.environ as pyo  # type: ignore
 import sqlalchemy.orm.session
 from eflips.model import Depot
@@ -18,7 +20,7 @@ ENERGY_PER_PACKET = (
     TIME_STEP_DURATION.total_seconds() / 3600
 ) * POWER_QUANTIZATION  # kWh
 
-
+CHARGING_CURVE_SOC_RESOLUTION = 0.01  # The resolution of the SOC in the charging curve, in percent
 def max_charging_power_for_event(event: Event) -> float:
     """
     Find the maximum charging power for an event.
@@ -35,6 +37,8 @@ def max_charging_power_for_event(event: Event) -> float:
     charging_curve = event.vehicle_type.charging_curve
     # The second entry of each tuple in the charging curve must be the same
     all_powers = [p[1] for p in charging_curve]
+
+    # TODO
     assert len(set(all_powers)) == 1, "Charging curve must have a constant power draw"
     vehicle_max_power = all_powers[0]
 
@@ -94,6 +98,10 @@ class SmartChargingEvent:
     energy_packets_transferred: npt.NDArray[np.int64]
     """The number of energy packets transferred at each time step (this is the result)."""
 
+    charging_curve_values_in_rate: List[float]
+
+    charging_curve_slopes_in_rate: List[float]
+
     @classmethod
     def from_event(
         cls, event: Event, time_step_starts: List[datetime]
@@ -150,12 +158,33 @@ class SmartChargingEvent:
             )
             energy_packets_needed = sum(vehicle_present) * energy_packets_per_time_step
 
+        vt_socs = [p[0] for p in event.vehicle_type.charging_curve]
+        vt_powers = [p[1] for p in event.vehicle_type.charging_curve]
+
+        # only construct if the curve is concave
+
+
+
+        full_socs = np.arange(0.0, 1.0 + CHARGING_CURVE_SOC_RESOLUTION, CHARGING_CURVE_SOC_RESOLUTION)
+
+        full_power_values = interp1d(
+            vt_socs, vt_powers, kind='linear', fill_value="extrapolate"
+        )(full_socs)
+
+        full_power_rates = full_power_values / POWER_QUANTIZATION
+
+        full_power_slopes = np.diff(full_power_values) / CHARGING_CURVE_SOC_RESOLUTION
+        # Append the last slope as 0, since the last SOC does not have a next value
+        full_power_slopes = np.append(full_power_slopes, 0.0)
+
         return cls(
             original_event=event,
             vehicle_present=vehicle_present,
             energy_packets_needed=energy_packets_needed,
             energy_packets_per_time_step=energy_packets_per_time_step,
             energy_packets_transferred=np.zeros(len(time_step_starts), dtype=int),
+            charging_curve_values_in_rate=full_power_rates.tolist(),
+            charging_curve_slopes_in_rate=full_power_slopes.tolist(),
         )
 
     def update_original_event(self, time_step_starts: List[datetime]) -> None:
@@ -248,6 +277,8 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
     ]
 
     # Create the SmartChargingEvents
+
+
     smart_charging_events = [
         SmartChargingEvent.from_event(event, time_steps) for event in charging_events
     ]
@@ -257,10 +288,28 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
         event for event in smart_charging_events if event.energy_packets_needed > 0
     ]
 
+    # TODO if there are one vehicle type supporting charging curve
+    vehicle_types = set([event.vehicle_type for event in charging_events])
+
+    support_charging_curve = False
+    for vt in vehicle_types:
+        if len(set(vt.charging_curve[1])) > 1:
+            support_charging_curve = True
+            break
+
+
+
+
+
+
+
+
+
+
     # Solve the peak shaving problem
     try:
         updated_events, peak_power = solve_peak_shaving(
-            smart_charging_events, time_steps
+            smart_charging_events, time_steps, support_charging_curve,
         )
 
         logger.info(f"Optimization successful. Peak power: {peak_power:.2f} kW")
@@ -276,6 +325,8 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
 def solve_peak_shaving(
     charging_events: List[SmartChargingEvent],
     time_steps: List[datetime],
+    support_charging_curve: bool = False,
+    # charging_curves: List[ChargingCurve] = None,
 ) -> Tuple[List[SmartChargingEvent], float]:
     """
     Solves the peak shaving problem for electric vehicles using integer linear programming.
@@ -303,6 +354,7 @@ def solve_peak_shaving(
         ValueError: If the problem is infeasible or no solution could be found
     """
     logger = logging.getLogger(__name__)
+
 
     # Create a Pyomo model
     model = pyo.ConcreteModel(name="EV_Peak_Shaving")
@@ -362,17 +414,11 @@ def solve_peak_shaving(
         doc="Peak total energy packets across all timesteps",
     )
 
+
     # Define constraints
 
-    # Constraint 1: Charging limit - only need to constrain when vehicle is present
-    def charging_limit_rule(model, v, t):  # type: ignore
-        return model.x[v, t] <= model.max_rate[v]
 
-    model.charging_limit = pyo.Constraint(
-        model.VT_present,
-        rule=charging_limit_rule,
-        doc="Limit charging based on maximum rate when vehicle is present",
-    )
+
 
     # Constraint 2: Energy requirement - each vehicle must receive its required energy
     def energy_requirement_rule(model, v):  # type: ignore
