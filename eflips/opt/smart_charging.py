@@ -20,7 +20,7 @@ ENERGY_PER_PACKET = (
     TIME_STEP_DURATION.total_seconds() / 3600
 ) * POWER_QUANTIZATION  # kWh
 
-CHARGING_CURVE_SOC_RESOLUTION = 0.1  # The resolution of the SOC in the charging curve, in percent
+CHARGING_CURVE_SOC_RESOLUTION = 0.5  # The resolution of the SOC in the charging curve, in percent
 def max_charging_power_for_event(event: Event) -> float:
     """
     Find the maximum charging power for an event.
