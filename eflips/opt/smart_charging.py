@@ -38,12 +38,7 @@ def max_charging_power_for_event(event: Event) -> float:
     # The second entry of each tuple in the charging curve must be the same
     all_powers = [p[1] for p in charging_curve]
 
-    # TODO
-    # if len(set(all_powers)) == 1:
-    #     print("try piecewise linear")
-
-    vehicle_max_power = all_powers[0]
-
+    vehicle_max_power = max(all_powers)
     charging_process = [
         p
         for p in event.area.processes
@@ -180,9 +175,6 @@ class SmartChargingEvent:
             )
             energy_packets_needed = sum(vehicle_present) * full_power_rates_limited[-1]
 
-
-
-
         return cls(
             original_event=event,
             vehicle_present=vehicle_present,
@@ -298,18 +290,10 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
 
     support_charging_curve = False
     for vt in vehicle_types:
-        if len(set(vt.charging_curve[1])) > 1:
+        charging_powers = [p[1] for p in vt.charging_curve]
+        if len(set(charging_powers)) > 1:
             support_charging_curve = True
             break
-
-
-
-
-
-
-
-
-
 
     # Solve the peak shaving problem
     try:
@@ -331,7 +315,6 @@ def solve_peak_shaving(
     charging_events: List[SmartChargingEvent],
     time_steps: List[datetime],
     support_charging_curve: bool = False,
-    # charging_curves: List[ChargingCurve] = None,
 ) -> Tuple[List[SmartChargingEvent], float]:
     """
     Solves the peak shaving problem for electric vehicles using integer linear programming.
@@ -407,7 +390,7 @@ def solve_peak_shaving(
     # Energy packets to transfer to vehicle v at timestep t (only when present)
     model.x = pyo.Var(
         model.VT_present,
-        domain=pyo.NonNegativeIntegers,
+        domain=pyo.NonNegativeReals, # TODO change to NonNegativeIntegers after debugging Can we use it instead?
         doc="Energy packets to transfer to vehicle v at timestep t when present",
     )
 
@@ -449,11 +432,7 @@ def solve_peak_shaving(
             doc="Charging curve values and slopes for each vehicle",
         )
 
-        model.charging_curve_slopes_in_rate = pyo.Param(
-            model.V, model.S,
-            initialize=lambda model, v, s: charging_events[v].charging_curve_values_in_rate[s],
-            doc="Charging curve values and slopes for each vehicle",
-        )
+
 
         model.start_soc = pyo.Param(
             model.V,
@@ -482,8 +461,9 @@ def solve_peak_shaving(
         # piecewise linear
 
         def soc_accum_rule(model, v, t):
+            # TODO t_ < t or t_ <= t?
             return model.soc[v, t] == (
-                    sum(model.x[v, t_] for (v_, t_) in model.VT_present if v_ == v and t_ <= t) * ENERGY_PER_PACKET /
+                    sum(model.x[v, t_] for (v_, t_) in model.VT_present if v_ == v and t_ < t) * ENERGY_PER_PACKET /
                     model.battery_capacity[v]
                     + model.start_soc[v]
             )
@@ -494,13 +474,13 @@ def solve_peak_shaving(
 
         # Enforce: x_upper_bound[v, t] = f_v(soc[v, t])
         model.charging_limit_piecewise = pyo.Piecewise(
-            model.VT_present,
-            model.x_upper_bound,
-            model.soc,
-            pw_pts=[round(s, 4) for s in np.arange(0.0, 1.0 + CHARGING_CURVE_SOC_RESOLUTION, CHARGING_CURVE_SOC_RESOLUTION)],
+            model.VT_present, # index
+            model.x_upper_bound, # output variable of the piecewise function
+            model.soc, # input variable of the piecewise function
+            pw_pts=[round(s, 4) for s in np.arange(0.0, 1.0 + soc_resolution, soc_resolution)],
             f_rule=lambda m, v, t, s: model.charging_curve_values_in_rate[v, s],
             pw_constr_type='UB',  # Upper bound
-            pw_repn='INC'  # Piecewise representation is increasing
+            pw_repn='SOS2'  # Piecewise representation is increasing
         )
 
         def charging_limit_rule(m, v, t):
@@ -569,7 +549,10 @@ def solve_peak_shaving(
 
     # Solve the model
     logger.info("Solving the peak shaving problem...")
-    result = solver.solve(model)
+
+    solver.options["Threads"] = 4
+
+    result = solver.solve(model, tee=True)
     logger.info(f"Solver status: {result.solver.status}")
 
     # Check if an optimal solution was found
@@ -588,9 +571,13 @@ def solve_peak_shaving(
                 if v_idx == v and t < len(
                     charging_events[v].energy_packets_transferred
                 ):
-                    charging_events[v].energy_packets_transferred[t] = int(
-                        model.x[v_idx, t].value
-                    )
+                    # charging_events[v].energy_packets_transferred[t] = int(
+                    #     model.x[v_idx, t].value
+                    # )
+
+                    # TODO try non-negative reals
+                    charging_events[v].energy_packets_transferred[t] = model.x[v_idx, t].value
+
 
         # Calculate the actual peak power in kW
         peak_power = model.peak.value * POWER_QUANTIZATION
