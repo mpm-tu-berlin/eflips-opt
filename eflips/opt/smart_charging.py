@@ -152,11 +152,6 @@ class SmartChargingEvent:
         ), "Energy packets per time step must be at least 1"
 
         # Sanity check: The energy packets needed must be <= number of time steps * energy packets per time step
-        if sum(vehicle_present) * energy_packets_per_time_step < energy_packets_needed:
-            logger.warning(
-                f"Energy packets needed ({energy_packets_needed}) has no flexibility. Scaling down."
-            )
-            energy_packets_needed = sum(vehicle_present) * energy_packets_per_time_step
 
         vt_socs = [p[0] for p in event.vehicle_type.charging_curve]
         vt_powers = [p[1] for p in event.vehicle_type.charging_curve]
@@ -172,7 +167,19 @@ class SmartChargingEvent:
         )(full_socs)
 
         full_power_rates = full_power_values / POWER_QUANTIZATION
-        charging_curve_values_in_rate = {round(soc, 4): value for soc, value in zip(full_socs.tolist(), full_power_rates.tolist())}
+
+        full_power_rates_limited = np.clip(
+            full_power_rates, 0, max_charging_power_for_event(event) / POWER_QUANTIZATION
+        )
+        charging_curve_values_in_rate = {round(soc, 4): value for soc, value in zip(full_socs.tolist(), full_power_rates_limited.tolist())}
+        if sum(vehicle_present) * full_power_rates_limited[-1] < energy_packets_needed:
+
+            # TODO what is that?
+            logger.warning(
+                f"Energy packets needed ({energy_packets_needed}) has no flexibility. Scaling down."
+            )
+            energy_packets_needed = sum(vehicle_present) * full_power_rates_limited[-1]
+
 
 
 
