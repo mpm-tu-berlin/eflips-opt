@@ -486,7 +486,8 @@ class DepotRotationOptimizer:
                         name=depot["name"],
                         scenario_id=self.scenario_id,
                         geom=from_shape(
-                            Point(depot["depot_station"][0], depot["depot_station"][1])
+                            Point(depot["depot_station"][0], depot["depot_station"][1]),
+                            srid=4326,
                         ),
                         is_electrified=False,  # TODO Hardcoded for now
                     )
@@ -502,6 +503,7 @@ class DepotRotationOptimizer:
 
         assert isinstance(new_assign, pd.DataFrame), "Result data should be a DataFrame"
         for row in new_assign.itertuples():
+
             # Add depot if it is a new depot, else get the depot station id
             if isinstance(depot_from_user[row.new_depot_id]["depot_station"], Tuple):  # type: ignore
                 # newly added depot
