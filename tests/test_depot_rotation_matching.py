@@ -106,7 +106,7 @@ class TestHelpers:
             scenario=scenario,
             name="Tiergarten",
             name_short="TA",
-            geom=from_shape(Point(13.335799579256504, 52.514000247127576)),
+            geom=from_shape(Point(13.335799579256504, 52.514000247127576), srid=4326),
             is_electrified=False,
         )
         session.add(stop_1)
@@ -115,7 +115,7 @@ class TestHelpers:
             scenario=scenario,
             name="Ernst Reuter Platz",
             name_short="ERP",
-            geom=from_shape(Point(13.32280013838422, 52.5116502402821)),
+            geom=from_shape(Point(13.32280013838422, 52.5116502402821), srid=4326),
             is_electrified=False,
         )
         session.add(stop_2)
@@ -124,7 +124,7 @@ class TestHelpers:
             scenario=scenario,
             name="Adenauer Platz",
             name_short="AP",
-            geom=from_shape(Point(13.308215181759383, 52.49999600735662)),
+            geom=from_shape(Point(13.308215181759383, 52.49999600735662), srid=4326),
             is_electrified=False,
         )
 
