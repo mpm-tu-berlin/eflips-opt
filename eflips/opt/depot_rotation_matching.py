@@ -22,8 +22,9 @@ from eflips.model import (
     Event,
     Vehicle,
 )
-from geoalchemy2.shape import to_shape
+from geoalchemy2.shape import to_shape, from_shape
 from pyomo.common.timing import report_timing  # type: ignore
+from shapely import Point  # type: ignore
 
 from eflips.opt.util import (
     get_vehicletype,
@@ -484,7 +485,10 @@ class DepotRotationOptimizer:
                     new_depot_station = Station(
                         name=depot["name"],
                         scenario_id=self.scenario_id,
-                        geom=f"POINT({depot['depot_station'][0]} {depot['depot_station'][1]} 0)",
+                        geom=from_shape(
+                            Point(depot["depot_station"][0], depot["depot_station"][1]),
+                            srid=4326,
+                        ),
                         is_electrified=False,  # TODO Hardcoded for now
                     )
                     self.session.add(new_depot_station)

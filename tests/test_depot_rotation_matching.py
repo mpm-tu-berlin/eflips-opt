@@ -25,6 +25,8 @@ from eflips.model import (
     VehicleClass,
     VehicleType,
 )
+from geoalchemy2.shape import from_shape
+from shapely import Point
 from sqlalchemy import create_engine
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -104,7 +106,7 @@ class TestHelpers:
             scenario=scenario,
             name="Tiergarten",
             name_short="TA",
-            geom="POINT(13.335799579256504 52.514000247127576 0)",
+            geom=from_shape(Point(13.335799579256504, 52.514000247127576), srid=4326),
             is_electrified=False,
         )
         session.add(stop_1)
@@ -113,7 +115,7 @@ class TestHelpers:
             scenario=scenario,
             name="Ernst Reuter Platz",
             name_short="ERP",
-            geom="POINT(13.32280013838422 52.5116502402821 0)",
+            geom=from_shape(Point(13.32280013838422, 52.5116502402821), srid=4326),
             is_electrified=False,
         )
         session.add(stop_2)
@@ -122,7 +124,7 @@ class TestHelpers:
             scenario=scenario,
             name="Adenauer Platz",
             name_short="AP",
-            geom="POINT(13.308215181759383 52.49999600735662 0)",
+            geom=from_shape(Point(13.308215181759383, 52.49999600735662), srid=4326),
             is_electrified=False,
         )
 
@@ -390,14 +392,12 @@ class TestHelpers:
 
     @pytest.fixture()
     def optimizer(self, session, full_scenario):
-
         optimizer = DepotRotationOptimizer(session, full_scenario.id)
 
         return optimizer
 
 
 class TestDepotRotationOptimizer(TestHelpers):
-
     def test_delete_original_data(self, session, full_scenario, optimizer):
         optimizer._delete_original_data()
         session.commit()
