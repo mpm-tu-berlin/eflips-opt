@@ -77,7 +77,10 @@ def event_has_space_for_smart_charging(event: Event) -> bool:
 
     return slack_duration >= 2 * TIME_STEP_DURATION
 
-def max_transferred_packets_event_charging_curve(event, charging_curve_values_in_rate) -> float:
+
+def max_transferred_packets_event_charging_curve(
+    event, charging_curve_values_in_rate
+) -> float:
     """
     calculate the maximum number of energy packets that can be transferred during an event with a charging curve
     :param event: a depot charging event
@@ -93,14 +96,24 @@ def max_transferred_packets_event_charging_curve(event, charging_curve_values_in
     dur = 0
     current_soc = event.soc_start
 
-    while dur <= (event.time_end - event.time_start).total_seconds() / 3600 and current_soc < event.soc_end:
-        power = interp1d(
-            all_socs, all_powers, kind="linear", fill_value="extrapolate"
-        )(current_soc) * POWER_QUANTIZATION
+    while (
+        dur <= (event.time_end - event.time_start).total_seconds() / 3600
+        and current_soc < event.soc_end
+    ):
+        power = (
+            interp1d(all_socs, all_powers, kind="linear", fill_value="extrapolate")(
+                current_soc
+            )
+            * POWER_QUANTIZATION
+        )
         dur += (soc_precision * event.vehicle.vehicle_type.battery_capacity) / power
         current_soc += soc_precision
 
-    return (current_soc - event.soc_start) * event.vehicle.vehicle_type.battery_capacity / ENERGY_PER_PACKET
+    return (
+        (current_soc - event.soc_start)
+        * event.vehicle.vehicle_type.battery_capacity
+        / ENERGY_PER_PACKET
+    )
 
 
 @dataclass
@@ -165,7 +178,6 @@ class SmartChargingEvent:
             np.floor(energy_transferred / ENERGY_PER_PACKET)
         )  # Rounded up, wo we may have to increase the energy transferred later
 
-
         # Charging with constant power
         if not support_charging_curve:
             # Calculate the energy packets per time step
@@ -182,16 +194,23 @@ class SmartChargingEvent:
             ), "Energy packets per time step must be at least 1"
 
             # Sanity check: The energy packets needed must be <= number of time steps * energy packets per time step
-            if sum(vehicle_present) * energy_packets_per_time_step < energy_packets_needed:
+            if (
+                sum(vehicle_present) * energy_packets_per_time_step
+                < energy_packets_needed
+            ):
                 logger.warning(
                     f"Energy packets needed ({energy_packets_needed}) has no flexibility. Scaling down."
                 )
-                energy_packets_needed = sum(vehicle_present) * energy_packets_per_time_step
+                energy_packets_needed = (
+                    sum(vehicle_present) * energy_packets_per_time_step
+                )
 
             charging_curve_values_in_rate = None
 
         else:
-            assert soc_turning_points is not None, "Soc turning points must be provided for charging curves"
+            assert (
+                soc_turning_points is not None
+            ), "Soc turning points must be provided for charging curves"
             # Charging with a charging curve
 
             vt_socs = [p[0] for p in event.vehicle_type.charging_curve]
@@ -199,8 +218,9 @@ class SmartChargingEvent:
 
             # Construct a full charging curve
             charging_curve_values_in_rate = None
-            assert soc_turning_points is not None, "Soc turning points must be provided for charging curves"
-
+            assert (
+                soc_turning_points is not None
+            ), "Soc turning points must be provided for charging curves"
 
             power_at_turning_points = interp1d(
                 vt_socs, vt_powers, kind="linear", fill_value="extrapolate"
@@ -213,7 +233,9 @@ class SmartChargingEvent:
                 if p.electric_power is not None and p.duration is None
             ]
             if len(charging_process) != 1:
-                raise ValueError("Area must have a process with electric power and no duration")
+                raise ValueError(
+                    "Area must have a process with electric power and no duration"
+                )
 
             power_at_depot = charging_process[0].electric_power
             full_power_rates_limited = np.clip(
@@ -222,21 +244,27 @@ class SmartChargingEvent:
                 power_at_depot / POWER_QUANTIZATION,
             )
 
-
             charging_curve_values_in_rate = {
                 round(soc, 4): value
-                for soc, value in zip(soc_turning_points, full_power_rates_limited.tolist())
+                for soc, value in zip(
+                    soc_turning_points, full_power_rates_limited.tolist()
+                )
             }
 
-            if max_transferred_packets_event_charging_curve(event, charging_curve_values_in_rate) < energy_packets_needed:
+            if (
+                max_transferred_packets_event_charging_curve(
+                    event, charging_curve_values_in_rate
+                )
+                < energy_packets_needed
+            ):
                 logger.warning(
                     f"Energy packets needed ({energy_packets_needed}) has no flexibility. Scaling down."
                 )
-                energy_packets_needed = int(max_transferred_packets_event_charging_curve(event))
+                energy_packets_needed = int(
+                    max_transferred_packets_event_charging_curve(event)
+                )
 
             energy_packets_per_time_step = None  # No fixed limit per time step
-
-
 
         return cls(
             original_event=event,
@@ -348,7 +376,9 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
     )
 
     smart_charging_events = [
-        SmartChargingEvent.from_event(event, time_steps, support_charging_curve, soc_turning_points)
+        SmartChargingEvent.from_event(
+            event, time_steps, support_charging_curve, soc_turning_points
+        )
         for event in charging_events
     ]
 
