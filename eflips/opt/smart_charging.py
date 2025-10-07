@@ -77,6 +77,31 @@ def event_has_space_for_smart_charging(event: Event) -> bool:
 
     return slack_duration >= 2 * TIME_STEP_DURATION
 
+def max_transferred_packets_event_charging_curve(event, charging_curve_values_in_rate) -> float:
+    """
+    calculate the maximum number of energy packets that can be transferred during an event with a charging curve
+    :param event: a depot charging event
+    :param charging_curve_values_in_rate: a dict mapping soc to power in units of POWER_QUANTIZATION
+    :return: maximum number of energy packets that can be transferred during the event
+
+    """
+
+    soc_precision = 0.01
+    all_socs = [k for k, v in charging_curve_values_in_rate.items()]
+    all_powers = [v for k, v in charging_curve_values_in_rate.items()]
+
+    dur = 0
+    current_soc = event.soc_start
+
+    while dur <= (event.time_end - event.time_start).total_seconds() / 3600 and current_soc < event.soc_end:
+        power = interp1d(
+            all_socs, all_powers, kind="linear", fill_value="extrapolate"
+        )(current_soc) * POWER_QUANTIZATION
+        dur += (soc_precision * event.vehicle.vehicle_type.battery_capacity) / power
+        current_soc += soc_precision
+
+    return (current_soc - event.soc_start) * event.vehicle.vehicle_type.battery_capacity / ENERGY_PER_PACKET
+
 
 @dataclass
 class SmartChargingEvent:
