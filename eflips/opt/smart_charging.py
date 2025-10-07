@@ -37,8 +37,8 @@ def max_charging_power_for_event(event: Event) -> float:
     charging_curve = event.vehicle_type.charging_curve
     # The second entry of each tuple in the charging curve must be the same
     all_powers = [p[1] for p in charging_curve]
-
-    vehicle_max_power = max(all_powers)
+    assert len(set(all_powers)) == 1, "Charging curve must have a constant power draw"
+    vehicle_max_power = all_powers[0]
     charging_process = [
         p
         for p in event.area.processes
