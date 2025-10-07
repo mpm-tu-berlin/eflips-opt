@@ -20,6 +20,7 @@ ENERGY_PER_PACKET = (
     TIME_STEP_DURATION.total_seconds() / 3600
 ) * POWER_QUANTIZATION  # kWh
 
+
 def max_charging_power_for_event(event: Event) -> float:
     """
     Find the maximum charging power for an event.
@@ -98,7 +99,10 @@ class SmartChargingEvent:
 
     @classmethod
     def from_event(
-        cls, event: Event, time_step_starts: List[datetime], soc_turning_points: Optional[List[float]] = None
+        cls,
+        event: Event,
+        time_step_starts: List[datetime],
+        soc_turning_points: Optional[List[float]] = None,
     ) -> "SmartChargingEvent":
         """
         Create a SmartChargingEvent from an event.
@@ -155,15 +159,20 @@ class SmartChargingEvent:
         full_socs = soc_turning_points
 
         full_power_values = interp1d(
-            vt_socs, vt_powers, kind='linear', fill_value="extrapolate"
+            vt_socs, vt_powers, kind="linear", fill_value="extrapolate"
         )(full_socs)
 
         full_power_rates = full_power_values / POWER_QUANTIZATION
 
         full_power_rates_limited = np.clip(
-            full_power_rates, 0, max_charging_power_for_event(event) / POWER_QUANTIZATION
+            full_power_rates,
+            0,
+            max_charging_power_for_event(event) / POWER_QUANTIZATION,
         )
-        charging_curve_values_in_rate = {round(soc, 4): value for soc, value in zip(full_socs, full_power_rates_limited.tolist())}
+        charging_curve_values_in_rate = {
+            round(soc, 4): value
+            for soc, value in zip(full_socs, full_power_rates_limited.tolist())
+        }
         if sum(vehicle_present) * full_power_rates_limited[-1] < energy_packets_needed:
 
             # TODO what is that?
@@ -281,9 +290,9 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
         {p[0] for vt in vehicle_types for p in vt.charging_curve}
     )
 
-
     smart_charging_events = [
-        SmartChargingEvent.from_event(event, time_steps, soc_turning_points) for event in charging_events
+        SmartChargingEvent.from_event(event, time_steps, soc_turning_points)
+        for event in charging_events
     ]
 
     # Discard the ones that need 0 energy
@@ -291,11 +300,12 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
         event for event in smart_charging_events if event.energy_packets_needed > 0
     ]
 
-
     # Solve the peak shaving problem
     try:
         updated_events, peak_power = solve_peak_shaving(
-            smart_charging_events, time_steps, support_charging_curve,
+            smart_charging_events,
+            time_steps,
+            support_charging_curve,
         )
 
         logger.info(f"Optimization successful. Peak power: {peak_power:.2f} kW")
@@ -339,7 +349,6 @@ def solve_peak_shaving(
         ValueError: If the problem is infeasible or no solution could be found
     """
     logger = logging.getLogger(__name__)
-
 
     # Create a Pyomo model
     model = pyo.ConcreteModel(name="EV_Peak_Shaving")
@@ -387,7 +396,7 @@ def solve_peak_shaving(
     # Energy packets to transfer to vehicle v at timestep t (only when present)
     model.x = pyo.Var(
         model.VT_present,
-        domain=pyo.NonNegativeReals, # TODO change to NonNegativeIntegers after debugging Can we use it instead?
+        domain=pyo.NonNegativeReals,  # TODO change to NonNegativeIntegers after debugging Can we use it instead?
         doc="Energy packets to transfer to vehicle v at timestep t when present",
     )
 
@@ -399,11 +408,11 @@ def solve_peak_shaving(
         doc="Peak total energy packets across all timesteps",
     )
 
-
     # Define constraints
 
     # Constraint 1: Charging limit - only need to constrain when vehicle is present
     if not support_charging_curve:
+
         def charging_limit_rule(model, v, t):
             return model.x[v, t] <= model.max_rate[v]  # type: ignore
 
@@ -416,19 +425,22 @@ def solve_peak_shaving(
     else:
 
         logger.info("Using charging curves in optimization.")
-        common_soc_turning_points = list(charging_events[0].charging_curve_values_in_rate.keys())
+        common_soc_turning_points = list(
+            charging_events[0].charging_curve_values_in_rate.keys()
+        )
 
         model.S = pyo.Set(
             initialize=common_soc_turning_points,
             doc="Set of SOC values for piecewise linear charging curves",
         )
         model.charging_curve_values_in_rate = pyo.Param(
-            model.V, model.S,
-            initialize=lambda model, v, s: charging_events[v].charging_curve_values_in_rate[s],
+            model.V,
+            model.S,
+            initialize=lambda model, v, s: charging_events[
+                v
+            ].charging_curve_values_in_rate[s],
             doc="Charging curve values and slopes for each vehicle",
         )
-
-
 
         model.start_soc = pyo.Param(
             model.V,
@@ -440,7 +452,9 @@ def solve_peak_shaving(
         model.battery_capacity = pyo.Param(
             model.V,
             domain=pyo.NonNegativeReals,
-            initialize=lambda model, v: charging_events[v].original_event.vehicle.vehicle_type.battery_capacity,
+            initialize=lambda model, v: charging_events[
+                v
+            ].original_event.vehicle.vehicle_type.battery_capacity,
             doc="Battery capacity for each vehicle",
         )
 
@@ -451,17 +465,19 @@ def solve_peak_shaving(
             doc="State of charge for each vehicle at each timestep",
         )
 
-        # TODO if concave piecewise linear curve, change here.
-        # if there is a model.max_rate[x], that is a non-linear constraint
-
         # piecewise linear
 
         def soc_accum_rule(model, v, t):
             # TODO t_ < t or t_ <= t?
             return model.soc[v, t] == (
-                    sum(model.x[v, t_] for (v_, t_) in model.VT_present if v_ == v and t_ < t) * ENERGY_PER_PACKET /
-                    model.battery_capacity[v]
-                    + model.start_soc[v]
+                sum(
+                    model.x[v, t_]
+                    for (v_, t_) in model.VT_present
+                    if v_ == v and t_ < t
+                )
+                * ENERGY_PER_PACKET
+                / model.battery_capacity[v]
+                + model.start_soc[v]
             )
 
         model.soc_accum = pyo.Constraint(model.VT_present, rule=soc_accum_rule)
@@ -470,19 +486,21 @@ def solve_peak_shaving(
 
         # Enforce: x_upper_bound[v, t] = f_v(soc[v, t])
         model.charging_limit_piecewise = pyo.Piecewise(
-            model.VT_present, # index
-            model.x_upper_bound, # output variable of the piecewise function
-            model.soc, # input variable of the piecewise function
+            model.VT_present,  # index
+            model.x_upper_bound,  # output variable of the piecewise function
+            model.soc,  # input variable of the piecewise function
             pw_pts=common_soc_turning_points,
             f_rule=lambda m, v, t, s: model.charging_curve_values_in_rate[v, s],
-            pw_constr_type='UB',  # Upper bound
-            pw_repn='SOS2'  # Piecewise representation is increasing
+            pw_constr_type="UB",  # Upper bound
+            pw_repn="SOS2",  # Piecewise representation is increasing
         )
 
         def charging_limit_rule(m, v, t):
             return m.x[v, t] <= m.x_upper_bound[v, t]
 
-        model.charging_limit = pyo.Constraint(model.VT_present, rule=charging_limit_rule)
+        model.charging_limit = pyo.Constraint(
+            model.VT_present, rule=charging_limit_rule
+        )
 
     # Constraint 2: Energy requirement - each vehicle must receive its required energy
     def energy_requirement_rule(model, v):  # type: ignore
@@ -572,8 +590,9 @@ def solve_peak_shaving(
                     # )
 
                     # TODO try non-negative reals
-                    charging_events[v].energy_packets_transferred[t] = model.x[v_idx, t].value
-
+                    charging_events[v].energy_packets_transferred[t] = model.x[
+                        v_idx, t
+                    ].value
 
         # Calculate the actual peak power in kW
         peak_power = model.peak.value * POWER_QUANTIZATION
