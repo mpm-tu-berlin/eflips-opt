@@ -266,7 +266,7 @@ class SmartChargingEvent:
             original_event=event,
             vehicle_present=vehicle_present,
             energy_packets_needed=energy_packets_needed,
-            energy_packets_per_time_step=energy_packets_per_time_step, # type: ignore
+            energy_packets_per_time_step=energy_packets_per_time_step,  # type: ignore
             energy_packets_transferred=np.zeros(len(time_step_starts), dtype=int),
             charging_curve_values_in_rate=charging_curve_values_in_rate,
         )
