@@ -7,7 +7,7 @@ from typing import List, Tuple, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
-from scipy.interpolate import interp1d # type: ignore
+from scipy.interpolate import interp1d  # type: ignore
 
 import pyomo.environ as pyo  # type: ignore
 import sqlalchemy.orm.session
@@ -496,7 +496,7 @@ def solve_peak_shaving(
     # Constraint 1: Charging limit - only need to constrain when vehicle is present
     if not support_charging_curve:
 
-        def charging_limit_rule(model, v, t): # type: ignore
+        def charging_limit_rule(model, v, t):  # type: ignore
             return model.x[v, t] <= model.max_rate[v]
 
         model.charging_limit = pyo.Constraint(
@@ -509,7 +509,7 @@ def solve_peak_shaving(
 
         logger.info("Using charging curves in optimization.")
         common_soc_turning_points = list(
-            charging_events[0].charging_curve_values_in_rate.keys() # type: ignore
+            charging_events[0].charging_curve_values_in_rate.keys()  # type: ignore
         )
 
         model.S = pyo.Set(
@@ -519,7 +519,7 @@ def solve_peak_shaving(
         model.charging_curve_values_in_rate = pyo.Param(
             model.V,
             model.S,
-            initialize=lambda model, v, s: charging_events[ # type: ignore
+            initialize=lambda model, v, s: charging_events[  # type: ignore
                 v
             ].charging_curve_values_in_rate[s],
             doc="Charging curve values and slopes for each vehicle",
@@ -550,7 +550,7 @@ def solve_peak_shaving(
 
         # piecewise linear
 
-        def soc_accum_rule(model, v, t): # type: ignore
+        def soc_accum_rule(model, v, t):  # type: ignore
             # TODO t_ < t or t_ <= t?
             return model.soc[v, t] == (
                 sum(
@@ -578,7 +578,7 @@ def solve_peak_shaving(
             pw_repn="SOS2",  # Piecewise representation is increasing
         )
 
-        def charging_limit_rule(m, v, t): # type: ignore
+        def charging_limit_rule(m, v, t):  # type: ignore
             return m.x[v, t] <= m.x_upper_bound[v, t]
 
         model.charging_limit = pyo.Constraint(
