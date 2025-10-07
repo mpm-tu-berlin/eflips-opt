@@ -7,7 +7,7 @@ from typing import List, Tuple, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d # type: ignore
 
 import pyomo.environ as pyo  # type: ignore
 import sqlalchemy.orm.session
@@ -79,8 +79,8 @@ def event_has_space_for_smart_charging(event: Event) -> bool:
 
 
 def max_transferred_packets_event_charging_curve(
-    event, charging_curve_values_in_rate
-) -> float:
+    event: Event, charging_curve_values_in_rate: Dict[float, float]
+) -> int:
     """
     calculate the maximum number of energy packets that can be transferred during an event with a charging curve
     :param event: a depot charging event
@@ -109,7 +109,7 @@ def max_transferred_packets_event_charging_curve(
         dur += (soc_precision * event.vehicle.vehicle_type.battery_capacity) / power
         current_soc += soc_precision
 
-    return (
+    return int(
         (current_soc - event.soc_start)
         * event.vehicle.vehicle_type.battery_capacity
         / ENERGY_PER_PACKET
@@ -133,7 +133,8 @@ class SmartChargingEvent:
     energy_packets_transferred: npt.NDArray[np.int64]
     """The number of energy packets transferred at each time step (this is the result)."""
 
-    charging_curve_values_in_rate: Dict[float, float]
+    charging_curve_values_in_rate: Dict[float, float] | None
+    """The charging curve values in units of POWER_QUANTIZATION, mapping soc to power."""
 
     @classmethod
     def from_event(
@@ -217,7 +218,6 @@ class SmartChargingEvent:
             vt_powers = [p[1] for p in event.vehicle_type.charging_curve]
 
             # Construct a full charging curve
-            charging_curve_values_in_rate = None
             assert (
                 soc_turning_points is not None
             ), "Soc turning points must be provided for charging curves"
@@ -245,24 +245,20 @@ class SmartChargingEvent:
             )
 
             charging_curve_values_in_rate = {
-                round(soc, 4): value
+                round(soc, 4): float(value)
                 for soc, value in zip(
                     soc_turning_points, full_power_rates_limited.tolist()
                 )
             }
+            max_transferred_packets = max_transferred_packets_event_charging_curve(
+                event, charging_curve_values_in_rate
+            )
+            if max_transferred_packets < energy_packets_needed:
 
-            if (
-                max_transferred_packets_event_charging_curve(
-                    event, charging_curve_values_in_rate
-                )
-                < energy_packets_needed
-            ):
                 logger.warning(
                     f"Energy packets needed ({energy_packets_needed}) has no flexibility. Scaling down."
                 )
-                energy_packets_needed = int(
-                    max_transferred_packets_event_charging_curve(event)
-                )
+                energy_packets_needed = max_transferred_packets
 
             energy_packets_per_time_step = None  # No fixed limit per time step
 
@@ -500,8 +496,8 @@ def solve_peak_shaving(
     # Constraint 1: Charging limit - only need to constrain when vehicle is present
     if not support_charging_curve:
 
-        def charging_limit_rule(model, v, t):
-            return model.x[v, t] <= model.max_rate[v]  # type: ignore
+        def charging_limit_rule(model, v, t): # type: ignore
+            return model.x[v, t] <= model.max_rate[v]
 
         model.charging_limit = pyo.Constraint(
             model.VT_present,
@@ -513,7 +509,7 @@ def solve_peak_shaving(
 
         logger.info("Using charging curves in optimization.")
         common_soc_turning_points = list(
-            charging_events[0].charging_curve_values_in_rate.keys()
+            charging_events[0].charging_curve_values_in_rate.keys() # type: ignore
         )
 
         model.S = pyo.Set(
@@ -523,7 +519,7 @@ def solve_peak_shaving(
         model.charging_curve_values_in_rate = pyo.Param(
             model.V,
             model.S,
-            initialize=lambda model, v, s: charging_events[
+            initialize=lambda model, v, s: charging_events[ # type: ignore
                 v
             ].charging_curve_values_in_rate[s],
             doc="Charging curve values and slopes for each vehicle",
@@ -554,7 +550,7 @@ def solve_peak_shaving(
 
         # piecewise linear
 
-        def soc_accum_rule(model, v, t):
+        def soc_accum_rule(model, v, t): # type: ignore
             # TODO t_ < t or t_ <= t?
             return model.soc[v, t] == (
                 sum(
@@ -582,7 +578,7 @@ def solve_peak_shaving(
             pw_repn="SOS2",  # Piecewise representation is increasing
         )
 
-        def charging_limit_rule(m, v, t):
+        def charging_limit_rule(m, v, t): # type: ignore
             return m.x[v, t] <= m.x_upper_bound[v, t]
 
         model.charging_limit = pyo.Constraint(
