@@ -395,7 +395,7 @@ def solve_peak_shaving(
     # This variable is necessary because we're solving a "minimax" problem
     # (minimizing the maximum power at any timestep)
     model.peak = pyo.Var(
-        domain=pyo.NonNegativeIntegers,
+        domain=pyo.NonNegativeReals,
         doc="Peak total energy packets across all timesteps",
     )
 
