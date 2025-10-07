@@ -3,7 +3,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from datetime import timedelta
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
@@ -20,7 +20,6 @@ ENERGY_PER_PACKET = (
     TIME_STEP_DURATION.total_seconds() / 3600
 ) * POWER_QUANTIZATION  # kWh
 
-CHARGING_CURVE_SOC_RESOLUTION = 0.5  # The resolution of the SOC in the charging curve, in percent
 def max_charging_power_for_event(event: Event) -> float:
     """
     Find the maximum charging power for an event.
@@ -99,7 +98,7 @@ class SmartChargingEvent:
 
     @classmethod
     def from_event(
-        cls, event: Event, time_step_starts: List[datetime]
+        cls, event: Event, time_step_starts: List[datetime], soc_turning_points: Optional[List[float]] = None
     ) -> "SmartChargingEvent":
         """
         Create a SmartChargingEvent from an event.
@@ -151,11 +150,9 @@ class SmartChargingEvent:
         vt_socs = [p[0] for p in event.vehicle_type.charging_curve]
         vt_powers = [p[1] for p in event.vehicle_type.charging_curve]
 
-        # only construct if the curve is concave
+        # Construct a full charging curve
 
-
-
-        full_socs = np.arange(0.0, 1.0 + CHARGING_CURVE_SOC_RESOLUTION, CHARGING_CURVE_SOC_RESOLUTION)
+        full_socs = soc_turning_points
 
         full_power_values = interp1d(
             vt_socs, vt_powers, kind='linear', fill_value="extrapolate"
@@ -166,7 +163,7 @@ class SmartChargingEvent:
         full_power_rates_limited = np.clip(
             full_power_rates, 0, max_charging_power_for_event(event) / POWER_QUANTIZATION
         )
-        charging_curve_values_in_rate = {round(soc, 4): value for soc, value in zip(full_socs.tolist(), full_power_rates_limited.tolist())}
+        charging_curve_values_in_rate = {round(soc, 4): value for soc, value in zip(full_socs, full_power_rates_limited.tolist())}
         if sum(vehicle_present) * full_power_rates_limited[-1] < energy_packets_needed:
 
             # TODO what is that?
@@ -275,25 +272,25 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
 
     # Create the SmartChargingEvents
 
+    vehicle_types = set([event.vehicle_type for event in charging_events])
+
+    support_charging_curve = any(
+        len(set(p[1] for p in vt.charging_curve)) > 1 for vt in vehicle_types
+    )
+    soc_turning_points = sorted(
+        {p[0] for vt in vehicle_types for p in vt.charging_curve}
+    )
+
 
     smart_charging_events = [
-        SmartChargingEvent.from_event(event, time_steps) for event in charging_events
+        SmartChargingEvent.from_event(event, time_steps, soc_turning_points) for event in charging_events
     ]
 
-    # Dicard the ones that need 0 energy
+    # Discard the ones that need 0 energy
     smart_charging_events = [
         event for event in smart_charging_events if event.energy_packets_needed > 0
     ]
 
-    # TODO if there are one vehicle type supporting charging curve
-    vehicle_types = set([event.vehicle_type for event in charging_events])
-
-    support_charging_curve = False
-    for vt in vehicle_types:
-        charging_powers = [p[1] for p in vt.charging_curve]
-        if len(set(charging_powers)) > 1:
-            support_charging_curve = True
-            break
 
     # Solve the peak shaving problem
     try:
@@ -418,12 +415,11 @@ def solve_peak_shaving(
 
     else:
 
-        print("try piecewise linear")
+        logger.info("Using charging curves in optimization.")
+        common_soc_turning_points = list(charging_events[0].charging_curve_values_in_rate.keys())
 
         model.S = pyo.Set(
-            initialize=[
-                round(s, 4) for s in np.arange(0.0, 1.0 + CHARGING_CURVE_SOC_RESOLUTION, CHARGING_CURVE_SOC_RESOLUTION)
-            ],
+            initialize=common_soc_turning_points,
             doc="Set of SOC values for piecewise linear charging curves",
         )
         model.charging_curve_values_in_rate = pyo.Param(
@@ -477,7 +473,7 @@ def solve_peak_shaving(
             model.VT_present, # index
             model.x_upper_bound, # output variable of the piecewise function
             model.soc, # input variable of the piecewise function
-            pw_pts=[round(s, 4) for s in np.arange(0.0, 1.0 + soc_resolution, soc_resolution)],
+            pw_pts=common_soc_turning_points,
             f_rule=lambda m, v, t, s: model.charging_curve_values_in_rate[v, s],
             pw_constr_type='UB',  # Upper bound
             pw_repn='SOS2'  # Piecewise representation is increasing
