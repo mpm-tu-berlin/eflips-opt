@@ -236,7 +236,6 @@ class SmartChargingEvent:
 
             energy_packets_per_time_step = None  # No fixed limit per time step
 
-            # TODO correct way is to evaluate the integral of the charging curve over the soc
 
 
         return cls(
