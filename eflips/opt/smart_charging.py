@@ -124,10 +124,10 @@ class SmartChargingEvent:
     vehicle_present: npt.NDArray[np.bool]
     """Array of booleans indicating whether a vehicle is present at each time step."""
 
-    energy_packets_needed: int
+    energy_packets_needed: float
     """The number of energy packets needed to transfer the energy."""
 
-    energy_packets_per_time_step: int | None
+    energy_packets_per_time_step: float | None
     """How many energy packets can be transferred per time step (quantized max power)."""
 
     energy_packets_transferred: npt.NDArray[np.int64]
@@ -184,10 +184,6 @@ class SmartChargingEvent:
             # Calculate the energy packets per time step
             max_power = max_charging_power_for_event(event)
             energy_packets_per_time_step = max_power / POWER_QUANTIZATION
-            assert energy_packets_per_time_step == int(
-                energy_packets_per_time_step
-            ), "Max power must be a multiple of the power quantization"
-            energy_packets_per_time_step = int(energy_packets_per_time_step)
 
             # Sanity check: The energy packets per time step must be at least 1
             assert (
@@ -266,7 +262,7 @@ class SmartChargingEvent:
             original_event=event,
             vehicle_present=vehicle_present,
             energy_packets_needed=energy_packets_needed,
-            energy_packets_per_time_step=energy_packets_per_time_step,  # type: ignore
+            energy_packets_per_time_step=energy_packets_per_time_step,
             energy_packets_transferred=np.zeros(len(time_step_starts), dtype=int),
             charging_curve_values_in_rate=charging_curve_values_in_rate,
         )
@@ -479,7 +475,7 @@ def solve_peak_shaving(
     # Energy packets to transfer to vehicle v at timestep t (only when present)
     model.x = pyo.Var(
         model.VT_present,
-        domain=pyo.NonNegativeReals,  # TODO change to NonNegativeIntegers after debugging Can we use it instead?
+        domain=pyo.NonNegativeReals,
         doc="Energy packets to transfer to vehicle v at timestep t when present",
     )
 
