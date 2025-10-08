@@ -579,8 +579,8 @@ def solve_peak_shaving(
             pw_pts=common_soc_turning_points,
             f_rule=lambda m, v, t, s: model.charging_curve_values_in_rate[v, s],
             pw_constr_type="UB",  # Upper bound
-            pw_repn="SOS2", # Piecewise representation is increasing
-            warning_tol=None # disabling warning for too close slopes
+            pw_repn="SOS2",  # Piecewise representation is increasing
+            warning_tol=None,  # disabling warning for too close slopes
         )
 
         def charging_limit_rule(m, v, t):  # type: ignore
