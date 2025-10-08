@@ -371,9 +371,11 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
     support_charging_curve = any(
         len(set(p[1] for p in vt.charging_curve)) > 1 for vt in vehicle_types
     )
+
     soc_turning_points = sorted(
         {p[0] for vt in vehicle_types for p in vt.charging_curve}
     )
+
 
     smart_charging_events = [
         SmartChargingEvent.from_event(
@@ -555,7 +557,6 @@ def solve_peak_shaving(
         # piecewise linear
 
         def soc_accum_rule(model, v, t):  # type: ignore
-            # TODO t_ < t or t_ <= t?
             return model.soc[v, t] == (
                 sum(
                     model.x[v, t_]
@@ -579,7 +580,8 @@ def solve_peak_shaving(
             pw_pts=common_soc_turning_points,
             f_rule=lambda m, v, t, s: model.charging_curve_values_in_rate[v, s],
             pw_constr_type="UB",  # Upper bound
-            pw_repn="SOS2",  # Piecewise representation is increasing
+            pw_repn="SOS2", # Piecewise representation is increasing
+            warning_tol=None
         )
 
         def charging_limit_rule(m, v, t):  # type: ignore
@@ -653,7 +655,7 @@ def solve_peak_shaving(
 
     solver.options["Threads"] = 4
 
-    result = solver.solve(model, tee=True)
+    result = solver.solve(model, tee=False)
     logger.info(f"Solver status: {result.solver.status}")
 
     # Check if an optimal solution was found
