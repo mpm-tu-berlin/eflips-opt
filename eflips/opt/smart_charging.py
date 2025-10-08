@@ -360,6 +360,14 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
 
     vehicle_types = set([event.vehicle_type for event in charging_events])
 
+    # check if charging curves including 0 and 1
+    for vt in vehicle_types:
+        socs = sorted([p[0] for p in vt.charging_curve])
+        if socs[0] != 0 or socs[-1] != 1:
+            raise ValueError(
+                f"Vehicle type {vt.name} has a charging curve that does not include 0 and 1 as soc values. "
+                f"Cannot use  for optimization."
+            )
     support_charging_curve = any(
         len(set(p[1] for p in vt.charging_curve)) > 1 for vt in vehicle_types
     )
