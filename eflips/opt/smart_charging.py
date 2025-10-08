@@ -547,7 +547,6 @@ def solve_peak_shaving(
         # piecewise linear
 
         def soc_accum_rule(model, v, t):  # type: ignore
-            # TODO t_ < t or t_ <= t?
             return model.soc[v, t] == (
                 sum(
                     model.x[v, t_]
@@ -571,7 +570,8 @@ def solve_peak_shaving(
             pw_pts=common_soc_turning_points,
             f_rule=lambda m, v, t, s: model.charging_curve_values_in_rate[v, s],
             pw_constr_type="UB",  # Upper bound
-            pw_repn="SOS2",  # Piecewise representation is increasing
+            pw_repn="SOS2", # Piecewise representation is increasing
+            warning_tol=None # disabling warning for too close slopes
         )
 
         def charging_limit_rule(m, v, t):  # type: ignore
@@ -645,7 +645,7 @@ def solve_peak_shaving(
 
     solver.options["Threads"] = 4
 
-    result = solver.solve(model, tee=True)
+    result = solver.solve(model, tee=False)
     logger.info(f"Solver status: {result.solver.status}")
 
     # Check if an optimal solution was found
@@ -664,11 +664,6 @@ def solve_peak_shaving(
                 if v_idx == v and t < len(
                     charging_events[v].energy_packets_transferred
                 ):
-                    # charging_events[v].energy_packets_transferred[t] = int(
-                    #     model.x[v_idx, t].value
-                    # )
-
-                    # TODO try non-negative reals
                     charging_events[v].energy_packets_transferred[t] = model.x[
                         v_idx, t
                     ].value
