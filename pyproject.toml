@@ -43,6 +43,7 @@ pylint = "^3.2.2"
 pre-commit = "^3.7.1"
 mypy = "^1.7.1"
 types-tqdm = "^4.66.0.20240417"
+types-shapely = "^2.1.0.20250917"
 
 [tool.mypy]
 plugins = "numpy.typing.mypy_plugin"

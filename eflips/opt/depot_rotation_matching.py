@@ -24,7 +24,7 @@ from eflips.model import (
 )
 from geoalchemy2.shape import to_shape, from_shape
 from pyomo.common.timing import report_timing  # type: ignore
-from shapely import Point  # type: ignore
+from shapely import Point
 
 from eflips.opt.util import (
     get_vehicletype,

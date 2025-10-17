@@ -9,7 +9,7 @@ from typing import Tuple, List, Dict, Coroutine, Any, Awaitable
 import numpy as np
 import openrouteservice  # type: ignore
 import pandas as pd
-import polyline
+import polyline  # type: ignore
 import sqlalchemy.orm.session
 from eflips.model import (
     Depot,
@@ -33,7 +33,7 @@ async def deadhead_cost(
     profile: str = "driving-car",
     service: str = "directions",
     data_format: str = "geojson",
-) -> Dict[str, Tuple[float, float]]:
+) -> Dict[str, Tuple[float, float] | Tuple[LineString, LineString]]:
     """
     Calculate the cost between two points using the openrouteservice API
 
@@ -117,7 +117,11 @@ async def calculate_deadhead_costs(
 ]:
     # Asynchronously compute deadhead cost
     deadhead_costs: List[
-        Coroutine[Awaitable[Dict[str, Tuple[float, float]]], Any, Any]
+        Coroutine[
+            Awaitable[Dict[str, Tuple[float, float] | Tuple[LineString, LineString]]],
+            Any,
+            Any,
+        ]
     ] = []
     for row in df.itertuples():
         # Make mypy happy
