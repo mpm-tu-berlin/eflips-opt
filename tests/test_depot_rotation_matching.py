@@ -458,8 +458,9 @@ class TestDepotRotationOptimizer(TestHelpers):
 
         session.rollback()
 
-    @pytest.mark.skip(
-        "This test is not working in CI due to no OpenRouteService Server"
+    @pytest.mark.skipif(
+        "BASE_URL" not in os.environ,
+        reason="Needs OpenRouteService API access (set BASE_URL in env variables)",
     )
     def test_data_preparation(self, session, full_scenario, optimizer):
         user_input_depot = [
@@ -507,7 +508,10 @@ class TestDepotRotationOptimizer(TestHelpers):
             session.query(func.count(Rotation.id)).scalar() * len(user_input_depot)
         )
 
-    @pytest.mark.skip("This test is not working in CI due to Gurobi license missing")
+    @pytest.mark.skipif(
+        "BASE_URL" not in os.environ,
+        reason="Needs OpenRouteService API access (set BASE_URL in env variables)",
+    )
     def test_optimize(self, session, full_scenario, optimizer):
         user_input_depot = [
             {"depot_station": 1, "capacity": 10, "vehicle_type": [1]},
@@ -533,7 +537,10 @@ class TestDepotRotationOptimizer(TestHelpers):
         optimizer.write_optimization_results(delete_original_data=True)
         session.commit()
 
-    @pytest.mark.skip("This test is not working in CI due to Gurobi license missing")
+    @pytest.mark.skipif(
+        "BASE_URL" not in os.environ,
+        reason="Needs OpenRouteService API access (set BASE_URL in env variables)",
+    )
     def test_optimize_with_infeasible_model(self, session, full_scenario, optimizer):
         user_input_depot = [
             {"depot_station": 1, "capacity": 1, "vehicle_type": [1]},
