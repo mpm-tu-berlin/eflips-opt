@@ -20,3 +20,9 @@ jobs:
             echo "Output: ${{ steps.versioncheck.outputs.local_version_is_higher }}"  # 'true' or 'false
             echo "Local version: ${{ steps.versioncheck.outputs.local_version }}"     # e.g., 0.1.1
             echo "Public version: ${{ steps.versioncheck.outputs.public_version }}"   # e.g., 0.1.0
+
+      - name: Fail if version is not higher
+        if: steps.versioncheck.outputs.local_version_is_higher == 'false'
+        run: |
+            echo "Error: Local version (${{ steps.versioncheck.outputs.local_version }}) is not higher than published version (${{ steps.versioncheck.outputs.public_version }})"
+            exit 1
