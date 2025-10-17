@@ -10,7 +10,7 @@ readme = "README.md"
 license = "AGPLV3.md"
 requires-python = ">=3.10, <3.14"
 dependencies = [
-    "eflips-model (>=3.0.0, <11.0.0)",
+    "eflips-model (>=10.0.3, <11.0.0)",
     "pandas (>=2.1, <3.0)",
     "shapely (>=2.0.3, <3.0)",
     "openrouteservice (>=2.3.3, <3.0)",
@@ -24,6 +24,7 @@ dependencies = [
     "eflips-schedule-rust (>=2.0.1, <3.0)",
     "dash-cytoscape (>=1.0.2, <2.0)",
     "kaleido (==0.2.1)",
+    "polyline (>=2.0.3,<3.0.0)",
 ]
 
 [tool.poetry]

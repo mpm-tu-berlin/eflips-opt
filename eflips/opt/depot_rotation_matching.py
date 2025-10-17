@@ -534,6 +534,10 @@ class DepotRotationOptimizer:
             ferry_route_duration = route_cost["duration"][0]
             return_route_duration = route_cost["duration"][1]
 
+            # The Geometry is stored in the route_cost["geometry"] as a shapely LineString
+            ferry_route_shape = from_shape(route_cost["geometry"][0], srid=4326)
+            return_route_shape = from_shape(route_cost["geometry"][1], srid=4326)
+
             trips = (
                 self.session.query(Trip)
                 .filter(Trip.rotation_id == row.rotation_id)
@@ -566,6 +570,7 @@ class DepotRotationOptimizer:
                     + str(depot_name)
                     + " "
                     + str(first_trip.route.departure_station.name),
+                    geom=ferry_route_shape,
                 )
 
                 assoc_ferry_station = [
@@ -649,6 +654,7 @@ class DepotRotationOptimizer:
                     + str(last_trip.route.arrival_station.name)
                     + " "
                     + str(depot_name),
+                    geom=return_route_shape,
                 )
                 assoc_return_station = [
                     AssocRouteStation(
