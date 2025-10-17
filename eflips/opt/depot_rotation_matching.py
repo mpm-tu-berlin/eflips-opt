@@ -25,6 +25,7 @@ from eflips.model import (
 from geoalchemy2.shape import to_shape, from_shape
 from pyomo.common.timing import report_timing  # type: ignore
 from shapely import Point
+from sqlalchemy import func
 
 from eflips.opt.util import (
     get_vehicletype,
@@ -538,6 +539,26 @@ class DepotRotationOptimizer:
             ferry_route_shape = from_shape(route_cost["geometry"][0], srid=4326)
             return_route_shape = from_shape(route_cost["geometry"][1], srid=4326)
 
+            # Calculate the distance using ST_Length
+            ferry_route_distance_from_shape = self.session.query(
+                func.ST_Length(ferry_route_shape, True)
+            ).scalar()
+            return_route_distance_from_shape = self.session.query(
+                func.ST_Length(return_route_shape, True)
+            ).scalar()
+
+            # If they differ by more than 50 meters, log a warning
+            if abs(ferry_route_distance - ferry_route_distance_from_shape) > 50:
+                logger.warning(
+                    f"Calculated ferry route distance {ferry_route_distance} differs from database calculation {ferry_route_distance_from_shape} by more than 50 meters."
+                )
+            if abs(return_route_distance - return_route_distance_from_shape) > 50:
+                logger.warning(
+                    f"Calculated return route distance {return_route_distance} differs from database calculation {return_route_distance_from_shape} by more than 50 meters."
+                )
+
+            del ferry_route_distance, return_route_distance
+
             trips = (
                 self.session.query(Trip)
                 .filter(Trip.rotation_id == row.rotation_id)
@@ -562,10 +583,7 @@ class DepotRotationOptimizer:
                     arrival_station=first_trip.route.departure_station,
                     line_id=first_trip.route.line_id,
                     scenario_id=self.scenario_id,
-                    distance=(
-                        ferry_route_distance if ferry_route_distance > 100 else 100
-                    ),
-                    # assume minimum distance is 100m
+                    distance=ferry_route_distance_from_shape,
                     name="Einsetzfahrt "
                     + str(depot_name)
                     + " "
@@ -584,9 +602,7 @@ class DepotRotationOptimizer:
                         scenario_id=self.scenario_id,
                         station=first_trip.route.departure_station,
                         route=new_ferry_route,
-                        elapsed_distance=(
-                            ferry_route_distance if ferry_route_distance > 100 else 100
-                        ),
+                        elapsed_distance=(ferry_route_distance_from_shape),
                     ),
                 ]
                 new_ferry_route.assoc_route_stations = assoc_ferry_station
@@ -647,9 +663,7 @@ class DepotRotationOptimizer:
                     arrival_station=depot_station,
                     line_id=first_trip.route.line_id,
                     scenario_id=self.scenario_id,
-                    distance=(
-                        return_route_distance if return_route_distance > 100 else 100
-                    ),
+                    distance=return_route_distance_from_shape,
                     name="Aussetzfahrt "
                     + str(last_trip.route.arrival_station.name)
                     + " "
@@ -661,11 +675,7 @@ class DepotRotationOptimizer:
                         scenario_id=self.scenario_id,
                         station=depot_station,
                         route=new_return_route,
-                        elapsed_distance=(
-                            return_route_distance
-                            if return_route_distance > 100
-                            else 100
-                        ),
+                        elapsed_distance=(return_route_distance_from_shape),
                     ),
                     AssocRouteStation(
                         scenario_id=self.scenario_id,
