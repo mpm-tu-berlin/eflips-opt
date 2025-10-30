@@ -8,7 +8,7 @@ authors = [
 ]
 readme = "README.md"
 license = "AGPLV3.md"
-requires-python = ">=3.10, <3.14"
+requires-python = ">=3.12, <3.14"
 dependencies = [
     "eflips-model (>=3.0.0, <11.0.0)",
     "pandas (>=2.1, <3.0)",
@@ -24,6 +24,8 @@ dependencies = [
     "eflips-schedule-rust (>=2.0.1, <3.0)",
     "dash-cytoscape (>=1.0.2, <2.0)",
     "kaleido (==0.2.1)",
+    "eflips-eval (>=1.7.5,<2.0.0)",
+    "eflips-tco @ file:///home/shuyao/PycharmProjects/eflips-tco"
 ]
 
 [tool.poetry]
