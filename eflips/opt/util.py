@@ -1,22 +1,16 @@
 import asyncio
+import os
 import pickle
-import urllib.parse
 import posixpath
+import urllib.parse
 from tempfile import gettempdir
 from typing import Tuple, List, Dict, Coroutine, Any, Awaitable
 
-import os
-
-import openrouteservice  # type: ignore
-import sqlalchemy.orm.session
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-
-from geoalchemy2.shape import to_shape
-
-import pandas as pd
 import numpy as np
-
+import openrouteservice  # type: ignore
+import pandas as pd
+import polyline  # type: ignore
+import sqlalchemy.orm.session
 from eflips.model import (
     Depot,
     Rotation,
@@ -25,6 +19,10 @@ from eflips.model import (
     Station,
     VehicleType,
 )
+from geoalchemy2.shape import to_shape
+from shapely import LineString
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 
 async def deadhead_cost(
@@ -35,7 +33,7 @@ async def deadhead_cost(
     profile: str = "driving-car",
     service: str = "directions",
     data_format: str = "geojson",
-) -> Dict[str, Tuple[float, float]]:
+) -> Dict[str, Tuple[float, float] | Tuple[LineString, LineString]]:
     """
     Calculate the cost between two points using the openrouteservice API
 
@@ -48,7 +46,7 @@ async def deadhead_cost(
     :param service: Service to use, default is directions
     :param data_format: Data format to use, default is geojson
 
-    :return: A dictionary with the distance and duration between the two points
+    :return: A dictionary with the distance, the duration and a GeoJSON LineString of the route taken between
     """
 
     base_url = os.environ["BASE_URL"]
@@ -86,6 +84,12 @@ async def deadhead_cost(
         with open(file_path, "wb") as file:
             pickle.dump(routes, file)
 
+    inbound_shape = polyline.decode(routes[0]["routes"][0]["geometry"])
+    outbound_shape = polyline.decode(routes[1]["routes"][0]["geometry"])
+    # We need to swap the order of the coordinates because openrouteservice returns them in (lon, lat) format
+    inbound_shape = [(coord[1], coord[0]) for coord in inbound_shape]
+    outbound_shape = [(coord[1], coord[0]) for coord in outbound_shape]
+
     return {
         "distance": (
             routes[0]["routes"][0]["segments"][0]["distance"],
@@ -95,15 +99,29 @@ async def deadhead_cost(
             round(routes[0]["routes"][0]["segments"][0]["duration"]),
             round(routes[1]["routes"][0]["segments"][0]["duration"]),
         ),
+        "geometry": (
+            LineString(inbound_shape),
+            LineString(outbound_shape),
+        ),
     }  # Using segments instead of summary for 0 distance cases
 
 
 async def calculate_deadhead_costs(
     df: pd.DataFrame, client: openrouteservice.Client
-) -> List[Coroutine[Awaitable[Dict[str, Tuple[float, float]]], Any, Any]]:
+) -> List[
+    Coroutine[
+        Awaitable[Dict[str, Tuple[float, float] | Tuple[LineString, LineString]]],
+        Any,
+        Any,
+    ]
+]:
     # Asynchronously compute deadhead cost
     deadhead_costs: List[
-        Coroutine[Awaitable[Dict[str, Tuple[float, float]]], Any, Any]
+        Coroutine[
+            Awaitable[Dict[str, Tuple[float, float] | Tuple[LineString, LineString]]],
+            Any,
+            Any,
+        ]
     ] = []
     for row in df.itertuples():
         # Make mypy happy
