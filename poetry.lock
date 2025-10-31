@@ -432,14 +432,14 @@ files = [
 
 [[package]]
 name = "eflips-eval"
-version = "1.7.5"
+version = "1.7.6"
 description = ""
 optional = false
 python-versions = "<3.14,>=3.10"
 groups = ["main"]
 files = [
-    {file = "eflips_eval-1.7.5-py3-none-any.whl", hash = "sha256:46cf0f579a14bdf7dfd8edbab7aad85bdedbb1f8f317a9f5d3af787c7a9824e4"},
-    {file = "eflips_eval-1.7.5.tar.gz", hash = "sha256:29e65e5422434ac863baa455d9e88ce3639344bc001f68996854530f88440d9e"},
+    {file = "eflips_eval-1.7.6-py3-none-any.whl", hash = "sha256:7b995c5757ba1284bd31d4ff8f20ed60947a149d1f2a7a170b6343d8a0e89188"},
+    {file = "eflips_eval-1.7.6.tar.gz", hash = "sha256:e731215d0830fa9a547631199ffe03596170d3cf6be8b7868f368d7e3e9ca93c"},
 ]
 
 [package.dependencies]
