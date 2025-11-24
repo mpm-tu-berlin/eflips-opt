@@ -214,12 +214,39 @@ if __name__ == "__main__":
             "NewlyBuiltStationConstraint",
             "NoStationUninstallationConstraint",
             "StationBeforeVehicleConstraint",
-            "NoEarlyStationBuildingConstraint",
+            # "NoEarlyStationBuildingConstraint",
             "AssignmentBlockYearConstraint",
-
+            # "FullElectrificationConstraint",
+            "BlockScheduleOnePathConstraint",
+            "BlockScheduleFlowConservationConstraint",
+            "BlockScheduleCostConstraint",
+            "NoSchedulingElectrifiedBlockConstraint",
+            "NoSchedulingElectrifiedBlock2Constraint",
+            # "BudgetConstraint",
         ]
 
         expressions_long_term = [
+            "ElectricBusDepreciation",
+            "DieselBusDepreciation",
+            "BatteryDepreciation",
+            "StationChargerDepreciation",
+            "DepotChargerDepreciation",
+            "AnnualEbusProcurement",
+            "AnnualBatteryProcurement",
+            "AnnualVehicleReplacement",
+            "AnnualBatteryReplacement",
+            "AnnualStationWithChargerProcurement",
+            "AnnualDepotChargerProcurement",
+            "ElectricityCost",
+            "DieselCost",
+            "MaintenanceDieselCost",
+            "MaintenanceElectricCost",
+            "MaintenanceInfraCost",
+            "StaffCostEbus",
+            "StaffCostDiesel",
+        ]
+
+        objective_components = [
             "ElectricBusDepreciation",
             "DieselBusDepreciation",
             "BatteryDepreciation",
@@ -241,33 +268,18 @@ if __name__ == "__main__":
             name=name,
             constraints=constraints_long_term,
             expressions=expressions_long_term,
-            objective_components=expressions_long_term,
+            objective_components=objective_components,
         )
 
         model_long_term.solve()
-        model_long_term.visualize()
-
-        scenario.tco_parameters["project_duration"] = 7
-        session.add(scenario)
-
-        parameters_registry_short_term = ParameterRegistry(session, scenario)
-
-        constraints_short_term = [
-            "InitialElectricVehicleConstraint",
-            "InitialElectrifiedStationConstraint",
-            "VehicleElectrificationConstraint",
-            "NewlyBuiltStationConstraint",
-            "NoStationUninstallationConstraint",
-            "StationBeforeVehicleConstraint",
-            "NoEarlyStationBuildingConstraint",
-            "AssignmentBlockYearConstraint",
-            "BudgetConstraint",
-        ]
-        expressions_short_term = [
+        optional_visualization_target = [
             "AnnualEbusProcurement",
             "AnnualBatteryProcurement",
+            "AnnualVehicleReplacement",
+            "AnnualBatteryReplacement",
             "AnnualStationWithChargerProcurement",
             "AnnualDepotChargerProcurement",
+            "DieselBusDepreciation",
             "ElectricityCost",
             "DieselCost",
             "MaintenanceDieselCost",
@@ -276,16 +288,51 @@ if __name__ == "__main__":
             "StaffCostEbus",
             "StaffCostDiesel",
         ]
-
-        model_short_term = TransitionPlannerModel(
-            params=parameters_registry_short_term,
-            constraint_registry=constraint_registry,
-            expression_registry=expression_registry,
-            name="Short-term minimum cost",
-            constraints=constraints_short_term,
-            expressions=expressions_short_term,
-            objective_components=expressions_short_term,
+        model_long_term.visualize(
+            optional_visualization_targets=optional_visualization_target
         )
-        model_short_term.solve()
-        model_short_term.visualize()
-        print("Finished transition planning example.")
+
+        # scenario.tco_parameters["project_duration"] = 10
+        # session.add(scenario)
+        #
+        # parameters_registry_short_term = ParameterRegistry(session, scenario)
+        #
+        # constraints_short_term = [
+        #     "InitialElectricVehicleConstraint",
+        #     "InitialElectrifiedStationConstraint",
+        #     "FullElectrificationConstraint",
+        #     "NewlyBuiltStationConstraint",
+        #     "NoStationUninstallationConstraint",
+        #     "StationBeforeVehicleConstraint",
+        #     "NoEarlyStationBuildingConstraint",
+        #     "AssignmentBlockYearConstraint",
+        #     "BudgetConstraint",
+        # ]
+        # expressions_short_term = [
+        #     "AnnualEbusProcurement",
+        #     "AnnualBatteryProcurement",
+        #     "AnnualVehicleReplacement",
+        #     "AnnualBatteryReplacement",
+        #     "AnnualStationWithChargerProcurement",
+        #     "AnnualDepotChargerProcurement",
+        #     "ElectricityCost",
+        #     "DieselCost",
+        #     "MaintenanceDieselCost",
+        #     "MaintenanceElectricCost",
+        #     "MaintenanceInfraCost",
+        #     "StaffCostEbus",
+        #     "StaffCostDiesel",
+        # ]
+        #
+        # model_short_term = TransitionPlannerModel(
+        #     params=parameters_registry_short_term,
+        #     constraint_registry=constraint_registry,
+        #     expression_registry=expression_registry,
+        #     name="Short-term minimum cost",
+        #     constraints=constraints_short_term,
+        #     expressions=expressions_short_term,
+        #     objective_components=expressions_short_term,
+        # )
+        # model_short_term.solve()
+        # model_short_term.visualize()
+        # print("Finished transition planning example.")

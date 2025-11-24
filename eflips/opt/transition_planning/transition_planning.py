@@ -1,5 +1,6 @@
 import logging
 import warnings
+import datetime
 from enum import Enum
 from typing import Dict, Tuple, Optional, Callable
 
@@ -63,10 +64,14 @@ class ParameterRegistry:
         self.vehicle_type_assignments = {
             (v.vehicle_type_id, v.id): 1 for v in self.vehicles
         }
+        self.block_vehicle_type_assignments = (
+            self._fetch_block_vehicle_type_assignments()
+        )
 
         self.vehicle_driving_times = self._fetch_vehicle_driving_times()
         self.block_mileage = self._fetch_block_mileage()
         self.block_durations = self._fetch_block_durations()
+        self.block_cost = self._fetch_block_cost()
 
         self.station_occupancy = self._fetch_station_occupancy()
 
@@ -137,6 +142,15 @@ class ParameterRegistry:
                 block_ids.add(rot.id)
         return sorted(block_ids), assignments
 
+    def _fetch_block_vehicle_type_assignments(self) -> Dict[Tuple[int, int], int]:
+        assignments = {}
+        block_ids = set()
+        for v in self.vehicles:
+            for rot in v.rotations:
+                assignments[(rot.id, v.vehicle_type_id)] = 1
+                block_ids.add(rot.id)
+        return assignments
+
     def _fetch_vehicle_driving_times(self) -> Dict[int, float]:
         results = (
             self.session.query(
@@ -190,6 +204,40 @@ class ParameterRegistry:
             for block_time, rotation_id in results
         }
 
+    def _fetch_block_cost(self) -> Dict[Tuple[int, int], float]:
+
+        # getting blocks
+
+        blocks = (
+            self.session.query(Rotation)
+            .filter(Rotation.scenario_id == self.scenario.id)
+            .order_by(Rotation.id)
+            .all()
+        )
+
+        # getting block costs
+        block_cost: Dict[Tuple[int, int], float] = {}
+
+        for bi in blocks:
+            block_cost[(0, bi.id)] = 1000.0
+            block_cost[(bi.id, 0)] = 1000.0
+            for bj in blocks:
+                if bi.id != bj.id:
+                    if (
+                        bi.trips[-1].route.arrival_station_id
+                        == bj.trips[0].route.departure_station_id
+                        and bj.trips[0].departure_time - bi.trips[-1].arrival_time
+                        >= datetime.timedelta(minutes=15)
+                        and bj.vehicle_type_id == bi.vehicle_type_id
+                        and bj.trips[0].route.departure_station_id
+                        == bi.trips[0].route.departure_station_id
+                    ):
+                        block_cost[(bi.id, bj.id)] = (
+                            bj.trips[0].departure_time - bi.trips[-1].arrival_time
+                        ).total_seconds() / 3600.0
+
+        return block_cost
+
     def _fetch_station_occupancy(self) -> Dict[int, int]:
         from eflips.eval.output.prepare import power_and_occupancy
 
@@ -204,6 +252,8 @@ class ParameterRegistry:
         return occupancy
 
     def _calculate_vehicle_type_average_mileage(self) -> Dict[int, float]:
+
+        # TODO redo it in diesel scenario. Now it is actually ebus scenario mileage per vehicle type
         vt_mileage = {}
         vt_count_mileage = (
             self.session.query(
@@ -396,15 +446,14 @@ class ConstraintRegistry:
         self.constraint_sets: Dict[str, Any] = {}
 
         self._register_constraints()
+        self.large_M = 1e6
 
     def _register_constraints(self) -> None:
-        def vehicle_electrification_rule(m, v):
+        def full_electrification_rule(m, v):
             return sum(m.X_vehicle_year[v, i] for i in m.I) == 1
 
-        self.constraints["VehicleElectrificationConstraint"] = (
-            vehicle_electrification_rule
-        )
-        self.constraint_sets["VehicleElectrificationConstraint"] = ["V"]
+        self.constraints["FullElectrificationConstraint"] = full_electrification_rule
+        self.constraint_sets["FullElectrificationConstraint"] = ["V"]
 
         def initial_electric_vehicle_rule(m, v):
 
@@ -504,6 +553,89 @@ class ConstraintRegistry:
         self.constraints["BudgetConstraint"] = budget_constraint_rule
         self.constraint_sets["BudgetConstraint"] = ["I"]
 
+        def block_schedule_one_path_rule(m, b, i):
+            if b == 0:
+                return pyo.Constraint.Skip
+            return (
+                sum(
+                    m.U_diesel_block_schedule_year[b_t, b, i]
+                    for b_t in m.B
+                    if (b_t != b)
+                )
+                == 1 - m.Z_block_year[b, i]
+            )
+
+        self.constraints["BlockScheduleOnePathConstraint"] = (
+            block_schedule_one_path_rule
+        )
+        self.constraint_sets["BlockScheduleOnePathConstraint"] = ["B", "I"]
+
+
+        def block_schedule_flow_conservation_rule(m, b, i):
+            if b == 0:
+                return pyo.Constraint.Skip
+            return sum(
+                m.U_diesel_block_schedule_year[b_t, b, i]
+                for b_t in m.B
+                if (b_t != b)
+            ) == sum(
+                m.U_diesel_block_schedule_year[b, b_q, i]
+                for b_q in m.B
+                if (b != b_q)
+            )
+
+        self.constraints["BlockScheduleFlowConservationConstraint"] = (
+            block_schedule_flow_conservation_rule
+        )
+        self.constraint_sets["BlockScheduleFlowConservationConstraint"] = ["B", "I"]
+
+        # TODO why it is infeasible with electrification? the scheduling algo still involves all blocks and if some block is electrified, it cannot be linked to any other block thus it conflicts the flow rule.
+
+        def block_schedule_cost_constraint_rule(m, i):
+            return (
+                sum(
+                    m.U_diesel_block_schedule_year[b_t, b_q, i]
+                    * self.params.block_cost.get((b_t, b_q), self.large_M)
+                    for b_t in m.B
+                    for b_q in m.B
+                    if b_t != b_q
+                )
+                <= self.large_M
+            )
+
+        self.constraints["BlockScheduleCostConstraint"] = (
+            block_schedule_cost_constraint_rule
+        )
+        self.constraint_sets["BlockScheduleCostConstraint"] = ["I"]
+
+        def no_scheduling_electrified_block_rule(m, b_t, b_q, i):
+
+            return (
+                m.U_diesel_block_schedule_year[b_t, b_q, i]
+                <= 1 - m.Z_block_year[b_q, i]
+            )
+
+        self.constraints["NoSchedulingElectrifiedBlockConstraint"] = (
+            no_scheduling_electrified_block_rule
+        )
+        self.constraint_sets["NoSchedulingElectrifiedBlockConstraint"] = ["B", "B", "I"]
+
+        def no_scheduling_electrified_block_2_rule(m, b_t, b_q, i):
+
+            return (
+                m.U_diesel_block_schedule_year[b_t, b_q, i]
+                <= 1 - m.Z_block_year[b_t, i]
+            )
+
+        self.constraints["NoSchedulingElectrifiedBlock2Constraint"] = (
+            no_scheduling_electrified_block_2_rule
+        )
+        self.constraint_sets["NoSchedulingElectrifiedBlock2Constraint"] = [
+            "B",
+            "B",
+            "I",
+        ]
+
 
 class ExpressionRegistry:
     def __init__(self, params: ParameterRegistry):
@@ -544,9 +676,7 @@ class ExpressionRegistry:
                     else:
 
                         annual_vehicle_replacement += (
-                            self.params.npv_electric_vehicle.get(
-                                (vt, i), 0
-                            )
+                            self.params.npv_electric_vehicle.get((vt, i), 0)
                             * sum(
                                 self.params.vehicle_type_assignments.get((vt, v), 0)
                                 * m.X_vehicle_year[v, initial_procurement_year]
@@ -556,10 +686,8 @@ class ExpressionRegistry:
 
             return annual_vehicle_replacement
 
-        self.expressions["AnnualVehicleReplacementCost"] = (
-            annual_vehicle_replacement_cost
-        )
-        self.expression_sets["AnnualVehicleReplacementCost"] = ["I"]
+        self.expressions["AnnualVehicleReplacement"] = annual_vehicle_replacement_cost
+        self.expression_sets["AnnualVehicleReplacement"] = ["I"]
 
         def electric_bus_depreciation_rule(m, i):
 
@@ -597,23 +725,31 @@ class ExpressionRegistry:
             total_diesel_annuity = 0
             for vt in m.VT:
 
-                if self.params.average_mileage_vehicle_type.get(vt, 0) == 0:
-                    continue
-                mileage = sum(
-                    self.params.block_mileage.get(b) * (1 - m.Z_block_year[b, i])
-                    for v in m.V
-                    for b in m.B
-                    if self.params.block_vehicle_assignments.get((b, v), 0) == 1
-                    and self.params.vehicle_type_assignments.get((vt, v), 0) == 1
-                )
-                total_diesel_annuity += (
-                    self.params.npv_diesel_bus.get((vt, i), 0)
-                    * mileage
-                    / (
-                        self.params.average_mileage_vehicle_type.get(vt)
-                        * self.params.useful_life_electric_vehicle.get(vt)
-                    )
-                )
+                # if self.params.average_mileage_vehicle_type.get(vt, 0) == 0:
+                #     continue
+                # mileage = sum(
+                #     self.params.block_mileage.get(b) * (1 - m.Z_block_year[b, i])
+                #     for v in m.V
+                #     for b in m.B
+                #     if self.params.block_vehicle_assignments.get((b, v), 0) == 1
+                #     and self.params.vehicle_type_assignments.get((vt, v), 0) == 1
+                # )
+                # total_diesel_annuity += (
+                #     self.params.npv_diesel_bus.get((vt, i), 0)
+                #     * mileage
+                #     / (
+                #         self.params.average_mileage_vehicle_type.get(vt)
+                #         * self.params.useful_life_electric_vehicle.get(vt)
+                #     )
+                # )
+
+                total_diesel_annuity += sum(
+                    m.U_diesel_block_schedule_year[0, b_q, i]
+                    * self.params.npv_diesel_bus.get((vt, i), 0)
+                    * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
+                    for b_q in m.B
+                    if (b_q != 0)
+                ) / self.params.useful_life_electric_vehicle.get(vt)
             return total_diesel_annuity
 
         self.expressions["DieselBusDepreciation"] = diesel_bus_depreciation_rule
@@ -633,7 +769,6 @@ class ExpressionRegistry:
         self.expressions["AnnualBatteryProcurement"] = annual_battery_procurement_rule
         self.expression_sets["AnnualBatteryProcurement"] = ["I"]
 
-
         def annual_battery_replacement_cost(m, i):
             annual_battery_replacement = 0
 
@@ -648,23 +783,18 @@ class ExpressionRegistry:
                         continue
                     else:
 
-                        annual_battery_replacement += (
-                            self.params.npv_battery.get(
-                                (vt, i), 0
-                            )
-                            * sum(
-                                self.params.vehicle_type_assignments.get((vt, v), 0)
-                                * m.X_vehicle_year[v, initial_procurement_year]
-                                for v in m.V
-                            )
+                        annual_battery_replacement += self.params.npv_battery.get(
+                            (vt, i), 0
+                        ) * sum(
+                            self.params.vehicle_type_assignments.get((vt, v), 0)
+                            * m.X_vehicle_year[v, initial_procurement_year]
+                            for v in m.V
                         )
 
             return annual_battery_replacement
 
-        self.expressions["AnnualBatteryReplacementCost"] = (
-            annual_battery_replacement_cost
-        )
-        self.expression_sets["AnnualBatteryReplacementCost"] = ["I"]
+        self.expressions["AnnualBatteryReplacement"] = annual_battery_replacement_cost
+        self.expression_sets["AnnualBatteryReplacement"] = ["I"]
 
         def battery_depreciation_rule(m, i):
             total_battery_replacement = 0
@@ -845,7 +975,7 @@ class ExpressionRegistry:
         def staff_cost_diesel_rule(m, i):
             return (
                 sum(
-                    self.params.block_durations.get(b) * (1 - m.Z_block_year[b, i])
+                    self.params.block_durations.get(b, 0) * (1 - m.Z_block_year[b, i])
                     for b in m.B
                 )
                 * self.params.time_scaling_factor_to_year
@@ -903,7 +1033,6 @@ class TransitionPlannerModel:
         self.expression_registry = expression_registry
         self.model = pyo.ConcreteModel(name=name)
 
-
         self.expressions = expressions
         self.constraints = constraints
         self.objective_components = objective_components
@@ -953,7 +1082,7 @@ class TransitionPlannerModel:
 
         self.result = result
 
-    def visualize(self):
+    def visualize(self, optional_visualization_targets: Optional[List[str]] = None):
 
         vehicle_assignment = pd.DataFrame(
             [
@@ -985,7 +1114,54 @@ class TransitionPlannerModel:
         plt.savefig(self.model.name + "_yearly_vehicle_electrification.png")
         plt.show()
 
-        df_cost_breakdown = {
+        # plot cumulative vehicle type
+
+        vehicle_type_per_year = pd.DataFrame(
+            [
+                {
+                    "year": i,
+                    "vehicle_type": vt,
+                    "num_vehicles": sum(
+                        pyo.value(self.model.X_vehicle_year[v, j])
+                        * self.params.vehicle_type_assignments.get((vt, v), 0)
+                        for v in self.model.V
+                        for j in self.model.I
+                        if j <= i
+                    ),
+                    "num_diesel_vehicles": sum(
+                        pyo.value(self.model.U_diesel_block_schedule_year[0, b_q, i])
+                        * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
+                        for b_q in self.model.B
+                        if (b_q != 0)
+                    ),
+                }
+                for vt in self.model.VT
+                for i in self.model.I
+            ]
+        )
+
+        # plot num_vehicles and num_diesel_vehicles side by side for each vehicle type and year
+
+        vehicle_type_pivot = vehicle_type_per_year.pivot(
+            index="year",
+            columns="vehicle_type",
+            values=["num_vehicles", "num_diesel_vehicles"],
+        )
+
+        vehicle_type_pivot.plot(
+            kind="bar",
+            stacked=True,
+            figsize=(12, 8),
+        )
+        plt.title("Cumulative Vehicle Type Electrification Over Years")
+        plt.ylabel("Number of Vehicles Electrified")
+        plt.xlabel("Year")
+        plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.tight_layout()
+        plt.savefig(self.model.name + "_cumulative_vehicle_type_electrification.png")
+        plt.show()
+
+        dict_cost_breakdown = {
             str(exp_name): [
                 pyo.value(getattr(self.model, exp_name)[i]) for i in self.model.I
             ]
@@ -993,7 +1169,7 @@ class TransitionPlannerModel:
         }
 
         yearly_cost_breakdown = pd.DataFrame(
-            df_cost_breakdown, index=[i for i in self.model.I]
+            dict_cost_breakdown, index=[i for i in self.model.I]
         )
 
         yearly_cost_breakdown.plot(
@@ -1014,6 +1190,34 @@ class TransitionPlannerModel:
         )
         yearly_cost_breakdown.to_csv(self.model.name + "_yearly_cost.csv", index=False)
 
+        if optional_visualization_targets is not None:
+            dict_optional_cost_breakdown = {
+                str(exp_name): [
+                    pyo.value(getattr(self.model, exp_name)[i]) for i in self.model.I
+                ]
+                for exp_name in optional_visualization_targets
+            }
+
+            optional_cost_breakdown = pd.DataFrame(
+                dict_optional_cost_breakdown, index=[i for i in self.model.I]
+            )
+
+            optional_cost_breakdown.plot(
+                kind="bar", stacked=True, figsize=(12, 8), colormap="tab20"
+            )
+
+            plt.title("Optional Cost Breakdown")
+            plt.ylabel("Cost")
+            plt.xlabel("Year")
+            plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+            plt.tight_layout()
+            plt.savefig(self.model.name + "_optional_cost_breakdown.png")
+            plt.show()
+
+    def visualize_diesel_baseline(self):
+
+        raise NotImplementedError("To be implemented")
+
     def _define_sets_and_variables(self):
         model = self.model
 
@@ -1025,7 +1229,7 @@ class TransitionPlannerModel:
             initialize=self.params.vehicle_type_indices, doc="Vehicle type indices"
         )
         # Blocks
-        model.B = pyo.Set(initialize=self.params.block_indices, doc="Block indices")
+        model.B = pyo.Set(initialize=self.params.block_indices + [0], doc="Block indices")
         # Stations
         model.S = pyo.Set(initialize=self.params.station_indices, doc="Station indices")
         # Years. Year 0 is the initial scenario. It is possible that already vehicles are electric in year 0.
@@ -1061,6 +1265,14 @@ class TransitionPlannerModel:
             model.I,
             within=pyo.Binary,
             doc="Block electrified by the year",
+        )
+
+        model.U_diesel_block_schedule_year = pyo.Var(
+            model.B,
+            model.B,
+            model.I,
+            within=pyo.Binary,
+            doc="Block b scheduled after block b2 in year i",
         )
 
     def _register_constraints(self):
@@ -1106,4 +1318,3 @@ class TransitionPlannerModel:
 
     def get_model(self):
         return self.model
-
