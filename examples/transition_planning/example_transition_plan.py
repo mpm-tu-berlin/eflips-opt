@@ -2,6 +2,7 @@ import os
 
 
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
 
 from eflips.model import (
     Scenario,
@@ -28,8 +29,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 if __name__ == "__main__":
 
-    with Session(create_engine_sqlite(DATABASE_URL_SQLITE)) as session:
-        # with Session(create_engine(DATABASE_URL)) as session:
+    # with Session(create_engine_sqlite(DATABASE_URL_SQLITE)) as session:
+    with Session(create_engine(DATABASE_URL)) as session:
         scenario = session.query(Scenario).filter(Scenario.id == SCENARIO_ID).one()
 
         id_en, b_id_en = (
@@ -211,21 +212,20 @@ if __name__ == "__main__":
         constraints_long_term = [
             "InitialElectricVehicleConstraint",
             "InitialElectrifiedStationConstraint",
-            "NewlyBuiltStationConstraint",
             "NoStationUninstallationConstraint",
             "StationBeforeVehicleConstraint",
             # "NoEarlyStationBuildingConstraint",
             "AssignmentBlockYearConstraint",
             # "FullElectrificationConstraint",
+            "NoDuplicatedVehicleElectrificationConstraint",
             "BlockScheduleOnePathConstraint",
             "BlockScheduleFlowConservationConstraint",
             "BlockScheduleCostConstraint",
-            "NoSchedulingElectrifiedBlockConstraint",
-            "NoSchedulingElectrifiedBlock2Constraint",
             # "BudgetConstraint",
         ]
 
         expressions_long_term = [
+            "NewlyBuiltStation",
             "ElectricBusDepreciation",
             "DieselBusDepreciation",
             "BatteryDepreciation",
@@ -292,47 +292,6 @@ if __name__ == "__main__":
             optional_visualization_targets=optional_visualization_target
         )
 
-        # scenario.tco_parameters["project_duration"] = 10
-        # session.add(scenario)
-        #
-        # parameters_registry_short_term = ParameterRegistry(session, scenario)
-        #
-        # constraints_short_term = [
-        #     "InitialElectricVehicleConstraint",
-        #     "InitialElectrifiedStationConstraint",
-        #     "FullElectrificationConstraint",
-        #     "NewlyBuiltStationConstraint",
-        #     "NoStationUninstallationConstraint",
-        #     "StationBeforeVehicleConstraint",
-        #     "NoEarlyStationBuildingConstraint",
-        #     "AssignmentBlockYearConstraint",
-        #     "BudgetConstraint",
-        # ]
-        # expressions_short_term = [
-        #     "AnnualEbusProcurement",
-        #     "AnnualBatteryProcurement",
-        #     "AnnualVehicleReplacement",
-        #     "AnnualBatteryReplacement",
-        #     "AnnualStationWithChargerProcurement",
-        #     "AnnualDepotChargerProcurement",
-        #     "ElectricityCost",
-        #     "DieselCost",
-        #     "MaintenanceDieselCost",
-        #     "MaintenanceElectricCost",
-        #     "MaintenanceInfraCost",
-        #     "StaffCostEbus",
-        #     "StaffCostDiesel",
-        # ]
-        #
-        # model_short_term = TransitionPlannerModel(
-        #     params=parameters_registry_short_term,
-        #     constraint_registry=constraint_registry,
-        #     expression_registry=expression_registry,
-        #     name="Short-term minimum cost",
-        #     constraints=constraints_short_term,
-        #     expressions=expressions_short_term,
-        #     objective_components=expressions_short_term,
-        # )
-        # model_short_term.solve()
-        # model_short_term.visualize()
-        # print("Finished transition planning example.")
+
+
+

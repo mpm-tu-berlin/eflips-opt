@@ -219,8 +219,8 @@ class ParameterRegistry:
         block_cost: Dict[Tuple[int, int], float] = {}
 
         for bi in blocks:
-            block_cost[(0, bi.id)] = 1000.0
-            block_cost[(bi.id, 0)] = 1000.0
+            block_cost[(0, bi.id)] = 200.0
+            block_cost[(bi.id, 0)] = 200.0
             for bj in blocks:
                 if bi.id != bj.id:
                     if (
@@ -446,7 +446,7 @@ class ConstraintRegistry:
         self.constraint_sets: Dict[str, Any] = {}
 
         self._register_constraints()
-        self.large_M = 1e6
+        self.large_M = 1e8
 
     def _register_constraints(self) -> None:
         def full_electrification_rule(m, v):
@@ -454,6 +454,12 @@ class ConstraintRegistry:
 
         self.constraints["FullElectrificationConstraint"] = full_electrification_rule
         self.constraint_sets["FullElectrificationConstraint"] = ["V"]
+
+        def no_duplicate_vehicle_electrification_rule(m, v):
+            return sum(m.X_vehicle_year[v, i] for i in m.I) <= 1
+
+        self.constraints["NoDuplicatedVehicleElectrificationConstraint"] = no_duplicate_vehicle_electrification_rule
+        self.constraint_sets["NoDuplicatedVehicleElectrificationConstraint"] = ["V"]
 
         def initial_electric_vehicle_rule(m, v):
 
@@ -475,19 +481,6 @@ class ConstraintRegistry:
             initial_electrified_station_rule
         )
         self.constraint_sets["InitialElectrifiedStationConstraint"] = ["S"]
-
-        # Infrastructure
-        def newly_built_station_rule(m, s, i):
-            if i == 0:
-                # TODO not sure if it is correct in case of initial stations
-                return m.Y_station_year[s, i] == m.Z_station_year[s, i]
-            return (
-                m.Y_station_year[s, i]
-                == m.Z_station_year[s, i] - m.Z_station_year[s, i - 1]
-            )
-
-        self.constraints["NewlyBuiltStationConstraint"] = newly_built_station_rule
-        self.constraint_sets["NewlyBuiltStationConstraint"] = ["S", "I"]
 
         def no_station_uninstallation_rule(m, s, i):
             if i == 0:
@@ -570,18 +563,13 @@ class ConstraintRegistry:
         )
         self.constraint_sets["BlockScheduleOnePathConstraint"] = ["B", "I"]
 
-
         def block_schedule_flow_conservation_rule(m, b, i):
             if b == 0:
                 return pyo.Constraint.Skip
             return sum(
-                m.U_diesel_block_schedule_year[b_t, b, i]
-                for b_t in m.B
-                if (b_t != b)
+                m.U_diesel_block_schedule_year[b_t, b, i] for b_t in m.B if (b_t != b)
             ) == sum(
-                m.U_diesel_block_schedule_year[b, b_q, i]
-                for b_q in m.B
-                if (b != b_q)
+                m.U_diesel_block_schedule_year[b, b_q, i] for b_q in m.B if (b != b_q)
             )
 
         self.constraints["BlockScheduleFlowConservationConstraint"] = (
@@ -589,7 +577,6 @@ class ConstraintRegistry:
         )
         self.constraint_sets["BlockScheduleFlowConservationConstraint"] = ["B", "I"]
 
-        # TODO why it is infeasible with electrification? the scheduling algo still involves all blocks and if some block is electrified, it cannot be linked to any other block thus it conflicts the flow rule.
 
         def block_schedule_cost_constraint_rule(m, i):
             return (
@@ -610,6 +597,9 @@ class ConstraintRegistry:
 
         def no_scheduling_electrified_block_rule(m, b_t, b_q, i):
 
+            if b_t == b_q or b_q == 0:
+                return pyo.Constraint.Skip
+
             return (
                 m.U_diesel_block_schedule_year[b_t, b_q, i]
                 <= 1 - m.Z_block_year[b_q, i]
@@ -621,6 +611,8 @@ class ConstraintRegistry:
         self.constraint_sets["NoSchedulingElectrifiedBlockConstraint"] = ["B", "B", "I"]
 
         def no_scheduling_electrified_block_2_rule(m, b_t, b_q, i):
+            if b_t == b_q or b_t == 0:
+                return pyo.Constraint.Skip
 
             return (
                 m.U_diesel_block_schedule_year[b_t, b_q, i]
@@ -646,6 +638,16 @@ class ExpressionRegistry:
         self._register_expressions()
 
     def _register_expressions(self) -> None:
+
+        def newly_built_station_rule(m, s, i):
+            if i == 0:
+
+                return m.Z_station_year[s, i]
+            return m.Z_station_year[s, i] - m.Z_station_year[s, i - 1]
+
+        self.expressions["NewlyBuiltStation"] = newly_built_station_rule
+        self.expression_sets["NewlyBuiltStation"] = ["S", "I"]
+
         def annual_electric_bus_procurement_rule(m, i):
 
             return sum(
@@ -724,24 +726,6 @@ class ExpressionRegistry:
             # TODO this is equivalent to replacing 1/useful_life of the diesel fleet each year
             total_diesel_annuity = 0
             for vt in m.VT:
-
-                # if self.params.average_mileage_vehicle_type.get(vt, 0) == 0:
-                #     continue
-                # mileage = sum(
-                #     self.params.block_mileage.get(b) * (1 - m.Z_block_year[b, i])
-                #     for v in m.V
-                #     for b in m.B
-                #     if self.params.block_vehicle_assignments.get((b, v), 0) == 1
-                #     and self.params.vehicle_type_assignments.get((vt, v), 0) == 1
-                # )
-                # total_diesel_annuity += (
-                #     self.params.npv_diesel_bus.get((vt, i), 0)
-                #     * mileage
-                #     / (
-                #         self.params.average_mileage_vehicle_type.get(vt)
-                #         * self.params.useful_life_electric_vehicle.get(vt)
-                #     )
-                # )
 
                 total_diesel_annuity += sum(
                     m.U_diesel_block_schedule_year[0, b_q, i]
@@ -830,7 +814,7 @@ class ExpressionRegistry:
 
             return sum(
                 self.params.npv_station_with_chargers.get((s, i), 0)
-                * m.Y_station_year[s, i]
+                * m.NewlyBuiltStation[s, i]
                 for s in m.S
             )
 
@@ -849,7 +833,7 @@ class ExpressionRegistry:
                     station_charger_depreciation += (
                         sum(
                             self.params.npv_station_with_chargers.get((s, i_t), 0)
-                            * m.Y_station_year[s, i_t]
+                            * m.NewlyBuiltStation[s, i_t]
                             for s in m.S
                         )
                         / useful_life
@@ -1229,7 +1213,9 @@ class TransitionPlannerModel:
             initialize=self.params.vehicle_type_indices, doc="Vehicle type indices"
         )
         # Blocks
-        model.B = pyo.Set(initialize=self.params.block_indices + [0], doc="Block indices")
+        model.B = pyo.Set(
+            initialize=self.params.block_indices + [0], doc="Block indices"
+        )
         # Stations
         model.S = pyo.Set(initialize=self.params.station_indices, doc="Station indices")
         # Years. Year 0 is the initial scenario. It is possible that already vehicles are electric in year 0.
@@ -1252,14 +1238,6 @@ class TransitionPlannerModel:
             doc="Station with chargers existing by the year",
         )
 
-        # Auxiliary variable
-        model.Y_station_year = pyo.Var(
-            model.S,
-            model.I,
-            within=pyo.Binary,
-            doc="Station with chargers built in the year",
-        )
-
         model.Z_block_year = pyo.Var(
             model.B,
             model.I,
@@ -1274,6 +1252,14 @@ class TransitionPlannerModel:
             within=pyo.Binary,
             doc="Block b scheduled after block b2 in year i",
         )
+
+        # Fix some variables in block scheduling to reduce computational burden
+
+        for b_t in model.B:
+            for b_q in model.B:
+                if (b_t, b_q) not in self.params.block_cost:
+                    for i in model.I:
+                        model.U_diesel_block_schedule_year[b_t, b_q, i].fix(0)
 
     def _register_constraints(self):
 
