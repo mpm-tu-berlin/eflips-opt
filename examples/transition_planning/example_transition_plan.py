@@ -207,7 +207,7 @@ if __name__ == "__main__":
         constraint_registry = ConstraintRegistry(transition_planner_parameters)
         expression_registry = ExpressionRegistry(transition_planner_parameters)
 
-        name = "Long-term minimum cost"
+        name = "long_term_min_cost"
 
         constraints_long_term = [
             "InitialElectricVehicleConstraint",
