@@ -1076,7 +1076,7 @@ class TransitionPlannerModel:
                     "is_electric": pyo.value(self.model.X_vehicle_year[v, i]),
                 }
                 for v in self.model.V
-                for i in self.model.I
+                for i in self.model.I if i > 0
             ]
         )
 
@@ -1120,7 +1120,7 @@ class TransitionPlannerModel:
                     ),
                 }
                 for vt in self.model.VT
-                for i in self.model.I
+                for i in self.model.I if i > 0
             ]
         )
 
@@ -1147,13 +1147,13 @@ class TransitionPlannerModel:
 
         dict_cost_breakdown = {
             str(exp_name): [
-                pyo.value(getattr(self.model, exp_name)[i]) for i in self.model.I
+                pyo.value(getattr(self.model, exp_name)[i]) for i in self.model.I if i > 0
             ]
             for exp_name in self.objective_components
         }
 
         yearly_cost_breakdown = pd.DataFrame(
-            dict_cost_breakdown, index=[i for i in self.model.I]
+            dict_cost_breakdown, index=[i for i in self.model.I if i > 0]
         )
 
         yearly_cost_breakdown.plot(
@@ -1177,13 +1177,13 @@ class TransitionPlannerModel:
         if optional_visualization_targets is not None:
             dict_optional_cost_breakdown = {
                 str(exp_name): [
-                    pyo.value(getattr(self.model, exp_name)[i]) for i in self.model.I
+                    pyo.value(getattr(self.model, exp_name)[i]) for i in self.model.I if i > 0
                 ]
                 for exp_name in optional_visualization_targets
             }
 
             optional_cost_breakdown = pd.DataFrame(
-                dict_optional_cost_breakdown, index=[i for i in self.model.I]
+                dict_optional_cost_breakdown, index=[i for i in self.model.I if i > 0]
             )
 
             optional_cost_breakdown.plot(
@@ -1294,7 +1294,7 @@ class TransitionPlannerModel:
         def objective_rule(m):
             return sum(
                 sum(getattr(m, expr_name)[i] for expr_name in self.objective_components)
-                for i in m.I
+                for i in m.I if i > 0
             )
 
         self.model.TotalCostObjective = pyo.Objective(

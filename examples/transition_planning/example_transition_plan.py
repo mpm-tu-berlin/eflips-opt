@@ -29,8 +29,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 if __name__ == "__main__":
 
-    # with Session(create_engine_sqlite(DATABASE_URL_SQLITE)) as session:
-    with Session(create_engine(DATABASE_URL)) as session:
+    with Session(create_engine_sqlite(DATABASE_URL_SQLITE)) as session:
+    # with Session(create_engine(DATABASE_URL)) as session:
         scenario = session.query(Scenario).filter(Scenario.id == SCENARIO_ID).one()
 
         id_en, b_id_en = (
