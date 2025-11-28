@@ -727,13 +727,22 @@ class ExpressionRegistry:
             total_diesel_annuity = 0
             for vt in m.VT:
 
+                # total_diesel_annuity += sum(
+                #     m.U_diesel_block_schedule_year[0, b_q, i]
+                #     * self.params.npv_diesel_bus.get((vt, i), 0)
+                #     * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
+                #     for b_q in m.B
+                #     if (b_q != 0)
+                # ) / self.params.useful_life_electric_vehicle.get(vt)
+
+                # alternative
                 total_diesel_annuity += sum(
-                    m.U_diesel_block_schedule_year[0, b_q, i]
+                    (1 - sum(m.X_vehicle_year[v, i_t] for i_t in m.I if i_t <= i))
+                    * self.params.vehicle_type_assignments.get((vt, v), 0)
                     * self.params.npv_diesel_bus.get((vt, i), 0)
-                    * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
-                    for b_q in m.B
-                    if (b_q != 0)
+                    for v in m.V
                 ) / self.params.useful_life_electric_vehicle.get(vt)
+
             return total_diesel_annuity
 
         self.expressions["DieselBusDepreciation"] = diesel_bus_depreciation_rule
@@ -1112,11 +1121,17 @@ class TransitionPlannerModel:
                         for j in self.model.I
                         if j <= i
                     ),
+                    # "num_diesel_vehicles": sum(
+                    #     pyo.value(self.model.U_diesel_block_schedule_year[0, b_q, i])
+                    #     * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
+                    #     for b_q in self.model.B
+                    #     if (b_q != 0)
+                    # ),
+
                     "num_diesel_vehicles": sum(
-                        pyo.value(self.model.U_diesel_block_schedule_year[0, b_q, i])
-                        * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
-                        for b_q in self.model.B
-                        if (b_q != 0)
+                        (1 - sum(pyo.value(self.model.X_vehicle_year[v, j]) for j in self.model.I if j <= i))
+                        * self.params.vehicle_type_assignments.get((vt, v), 0)
+                        for v in self.model.V
                     ),
                 }
                 for vt in self.model.VT

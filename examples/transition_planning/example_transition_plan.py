@@ -218,9 +218,9 @@ if __name__ == "__main__":
             "AssignmentBlockYearConstraint",
             # "FullElectrificationConstraint",
             "NoDuplicatedVehicleElectrificationConstraint",
-            "BlockScheduleOnePathConstraint",
-            "BlockScheduleFlowConservationConstraint",
-            "BlockScheduleCostConstraint",
+            # "BlockScheduleOnePathConstraint",
+            # "BlockScheduleFlowConservationConstraint",
+            # "BlockScheduleCostConstraint",
             # "BudgetConstraint",
         ]
 
