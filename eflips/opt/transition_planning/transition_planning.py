@@ -595,38 +595,6 @@ class ConstraintRegistry:
         )
         self.constraint_sets["BlockScheduleCostConstraint"] = ["I"]
 
-        def no_scheduling_electrified_block_rule(m, b_t, b_q, i):
-
-            if b_t == b_q or b_q == 0:
-                return pyo.Constraint.Skip
-
-            return (
-                m.U_diesel_block_schedule_year[b_t, b_q, i]
-                <= 1 - m.Z_block_year[b_q, i]
-            )
-
-        self.constraints["NoSchedulingElectrifiedBlockConstraint"] = (
-            no_scheduling_electrified_block_rule
-        )
-        self.constraint_sets["NoSchedulingElectrifiedBlockConstraint"] = ["B", "B", "I"]
-
-        def no_scheduling_electrified_block_2_rule(m, b_t, b_q, i):
-            if b_t == b_q or b_t == 0:
-                return pyo.Constraint.Skip
-
-            return (
-                m.U_diesel_block_schedule_year[b_t, b_q, i]
-                <= 1 - m.Z_block_year[b_t, i]
-            )
-
-        self.constraints["NoSchedulingElectrifiedBlock2Constraint"] = (
-            no_scheduling_electrified_block_2_rule
-        )
-        self.constraint_sets["NoSchedulingElectrifiedBlock2Constraint"] = [
-            "B",
-            "B",
-            "I",
-        ]
 
 
 class ExpressionRegistry:
@@ -638,6 +606,17 @@ class ExpressionRegistry:
         self._register_expressions()
 
     def _register_expressions(self) -> None:
+
+        def assignment_block_year(m, b, i):
+
+            return sum(
+                self.params.block_vehicle_assignments.get((b, v), 0)
+                * sum(m.X_vehicle_year[v, i_t] for i_t in m.I if i_t <= i)
+                for v in m.V
+            )
+
+        self.expressions["Z_block_year"] = assignment_block_year
+        self.expression_sets["Z_block_year"] = ["B", "I"]
 
         def newly_built_station_rule(m, s, i):
             if i == 0:
@@ -727,21 +706,21 @@ class ExpressionRegistry:
             total_diesel_annuity = 0
             for vt in m.VT:
 
-                # total_diesel_annuity += sum(
-                #     m.U_diesel_block_schedule_year[0, b_q, i]
-                #     * self.params.npv_diesel_bus.get((vt, i), 0)
-                #     * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
-                #     for b_q in m.B
-                #     if (b_q != 0)
-                # ) / self.params.useful_life_electric_vehicle.get(vt)
+                total_diesel_annuity += sum(
+                    m.U_diesel_block_schedule_year[0, b_q, i]
+                    * self.params.npv_diesel_bus.get((vt, i), 0)
+                    * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
+                    for b_q in m.B
+                    if (b_q != 0)
+                ) / self.params.useful_life_electric_vehicle.get(vt)
 
                 # alternative
-                total_diesel_annuity += sum(
-                    (1 - sum(m.X_vehicle_year[v, i_t] for i_t in m.I if i_t <= i))
-                    * self.params.vehicle_type_assignments.get((vt, v), 0)
-                    * self.params.npv_diesel_bus.get((vt, i), 0)
-                    for v in m.V
-                ) / self.params.useful_life_electric_vehicle.get(vt)
+                # total_diesel_annuity += sum(
+                #     (1 - sum(m.X_vehicle_year[v, i_t] for i_t in m.I if i_t <= i))
+                #     * self.params.vehicle_type_assignments.get((vt, v), 0)
+                #     * self.params.npv_diesel_bus.get((vt, i), 0)
+                #     for v in m.V
+                # ) / self.params.useful_life_electric_vehicle.get(vt)
 
             return total_diesel_annuity
 
@@ -1121,18 +1100,18 @@ class TransitionPlannerModel:
                         for j in self.model.I
                         if j <= i
                     ),
-                    # "num_diesel_vehicles": sum(
-                    #     pyo.value(self.model.U_diesel_block_schedule_year[0, b_q, i])
-                    #     * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
-                    #     for b_q in self.model.B
-                    #     if (b_q != 0)
-                    # ),
-
                     "num_diesel_vehicles": sum(
-                        (1 - sum(pyo.value(self.model.X_vehicle_year[v, j]) for j in self.model.I if j <= i))
-                        * self.params.vehicle_type_assignments.get((vt, v), 0)
-                        for v in self.model.V
+                        pyo.value(self.model.U_diesel_block_schedule_year[0, b_q, i])
+                        * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
+                        for b_q in self.model.B
+                        if (b_q != 0)
                     ),
+
+                    # "num_diesel_vehicles": sum(
+                    #     (1 - sum(pyo.value(self.model.X_vehicle_year[v, j]) for j in self.model.I if j <= i))
+                    #     * self.params.vehicle_type_assignments.get((vt, v), 0)
+                    #     for v in self.model.V
+                    # ),
                 }
                 for vt in self.model.VT
                 for i in self.model.I if i > 0
@@ -1251,13 +1230,6 @@ class TransitionPlannerModel:
             model.I,
             within=pyo.Binary,
             doc="Station with chargers existing by the year",
-        )
-
-        model.Z_block_year = pyo.Var(
-            model.B,
-            model.I,
-            within=pyo.Binary,
-            doc="Block electrified by the year",
         )
 
         model.U_diesel_block_schedule_year = pyo.Var(
