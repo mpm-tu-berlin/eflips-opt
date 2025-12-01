@@ -551,9 +551,9 @@ class ConstraintRegistry:
                 return pyo.Constraint.Skip
             return (
                 sum(
-                    m.U_diesel_block_schedule_year[b_t, b, i]
-                    for b_t in m.B
-                    if (b_t != b)
+                    m.U_diesel_block_schedule_year[b_pair, i]
+                    for b_pair in m.B_pairs
+                    if (b_pair[1] == b)
                 )
                 == 1 - m.Z_block_year[b, i]
             )
@@ -566,11 +566,14 @@ class ConstraintRegistry:
         def block_schedule_flow_conservation_rule(m, b, i):
             if b == 0:
                 return pyo.Constraint.Skip
+            # return sum(
+            #     m.U_diesel_block_schedule_year[b_t, b, i] for b_t in m.B if (b_t != b)
+            # ) == sum(
+            #     m.U_diesel_block_schedule_year[b, b_q, i] for b_q in m.B if (b != b_q)
+            # )
             return sum(
-                m.U_diesel_block_schedule_year[b_t, b, i] for b_t in m.B if (b_t != b)
-            ) == sum(
-                m.U_diesel_block_schedule_year[b, b_q, i] for b_q in m.B if (b != b_q)
-            )
+                m.U_diesel_block_schedule_year[b_pair, i] for b_pair in m.B_pairs if (b_pair[0] == b)
+            ) == 1 - m.Z_block_year[b, i]
 
         self.constraints["BlockScheduleFlowConservationConstraint"] = (
             block_schedule_flow_conservation_rule
@@ -581,11 +584,9 @@ class ConstraintRegistry:
         def block_schedule_cost_constraint_rule(m, i):
             return (
                 sum(
-                    m.U_diesel_block_schedule_year[b_t, b_q, i]
-                    * self.params.block_cost.get((b_t, b_q), self.large_M)
-                    for b_t in m.B
-                    for b_q in m.B
-                    if b_t != b_q
+                    m.U_diesel_block_schedule_year[b_pair, i]
+                    * self.params.block_cost.get(b_pair, self.large_M)
+                    for b_pair in m.B_pairs
                 )
                 <= self.large_M
             )
@@ -707,11 +708,11 @@ class ExpressionRegistry:
             for vt in m.VT:
 
                 total_diesel_annuity += sum(
-                    m.U_diesel_block_schedule_year[0, b_q, i]
+                    m.U_diesel_block_schedule_year[b_pair, i]
                     * self.params.npv_diesel_bus.get((vt, i), 0)
-                    * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
-                    for b_q in m.B
-                    if (b_q != 0)
+                    * self.params.block_vehicle_type_assignments.get((b_pair[1], vt), 0)
+                    for b_pair in m.B_pairs
+                    if (b_pair[0] == 0)
                 ) / self.params.useful_life_electric_vehicle.get(vt)
 
                 # alternative
@@ -1101,10 +1102,10 @@ class TransitionPlannerModel:
                         if j <= i
                     ),
                     "num_diesel_vehicles": sum(
-                        pyo.value(self.model.U_diesel_block_schedule_year[0, b_q, i])
-                        * self.params.block_vehicle_type_assignments.get((b_q, vt), 0)
-                        for b_q in self.model.B
-                        if (b_q != 0)
+                        pyo.value(self.model.U_diesel_block_schedule_year[b_pair, i])
+                        * self.params.block_vehicle_type_assignments.get((b_pair[1], vt), 0)
+                        for b_pair in self.model.B_pairs
+                        if (b_pair[0] == 0)
                     ),
 
                     # "num_diesel_vehicles": sum(
@@ -1210,6 +1211,14 @@ class TransitionPlannerModel:
         model.B = pyo.Set(
             initialize=self.params.block_indices + [0], doc="Block indices"
         )
+
+        model.B_pairs = pyo.Set(
+            initialize=[
+                (b_t, b_q)
+                for (b_t, b_q) in self.params.block_cost.keys()
+            ],
+            doc="Block index pairs",
+        )
         # Stations
         model.S = pyo.Set(initialize=self.params.station_indices, doc="Station indices")
         # Years. Year 0 is the initial scenario. It is possible that already vehicles are electric in year 0.
@@ -1233,20 +1242,19 @@ class TransitionPlannerModel:
         )
 
         model.U_diesel_block_schedule_year = pyo.Var(
-            model.B,
-            model.B,
+            model.B_pairs,
             model.I,
             within=pyo.Binary,
             doc="Block b scheduled after block b2 in year i",
         )
 
         # Fix some variables in block scheduling to reduce computational burden
-
-        for b_t in model.B:
-            for b_q in model.B:
-                if (b_t, b_q) not in self.params.block_cost:
-                    for i in model.I:
-                        model.U_diesel_block_schedule_year[b_t, b_q, i].fix(0)
+        #
+        # for b_t in model.B:
+        #     for b_q in model.B:
+        #         if (b_t, b_q) not in self.params.block_cost:
+        #             for i in model.I:
+        #                 model.U_diesel_block_schedule_year[b_t, b_q, i].fix(0)
 
     def _register_constraints(self):
 
