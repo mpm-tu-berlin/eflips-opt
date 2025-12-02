@@ -1,6 +1,6 @@
 [project]
 name = "eflips-opt"
-version = "0.3.8"
+version = "0.3.9"
 description = "A collection of pre-simulation optimization algorithms for eFLIPS."
 authors = [
     { name = "Ludger Heide", email = "ludger.heide@tu-berlin.de" },
