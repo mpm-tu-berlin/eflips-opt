@@ -23,6 +23,11 @@ from eflips.model import (
     Event,
     Vehicle,
 )
+from geoalchemy2.shape import to_shape, from_shape
+from pyomo.common.timing import report_timing  # type: ignore
+from shapely import Point
+from sqlalchemy import func
+
 from eflips.opt.util import (
     get_vehicletype,
     get_rotation,
@@ -31,10 +36,6 @@ from eflips.opt.util import (
     get_depot_rot_assign,
     calculate_deadhead_costs,
 )
-from geoalchemy2.shape import to_shape, from_shape
-from pyomo.common.timing import report_timing  # type: ignore
-from shapely import Point
-from sqlalchemy import func
 
 
 class DepotRotationOptimizer:
@@ -323,7 +324,9 @@ class DepotRotationOptimizer:
 
         api_key = os.environ["OPENROUTESERVICE_API_KEY"]
         if api_key is None:
-            warnings.warn("OPENROUTESERVICE_API_KEY is not set, this only works with a private openrouteservice server without api key requirement")
+            warnings.warn(
+                "OPENROUTESERVICE_API_KEY is not set, this only works with a private openrouteservice server without api key requirement"
+            )
 
         client = openrouteservice.Client(base_url=base_url, key=api_key)
 

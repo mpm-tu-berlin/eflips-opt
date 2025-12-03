@@ -19,7 +19,7 @@ from datetime import timedelta
 from tempfile import gettempdir
 from typing import Dict, List, Tuple
 
-import dash  # type: ignore
+import dash
 import dash_cytoscape as cyto  # type: ignore
 import eflips_schedule_rust  # type: ignore
 import networkx as nx  # type: ignore
