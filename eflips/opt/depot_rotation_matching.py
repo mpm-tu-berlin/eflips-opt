@@ -2,6 +2,7 @@ import asyncio
 import itertools
 import logging
 import os
+import warnings
 from datetime import timedelta
 from typing import Dict, List, Tuple
 
@@ -321,7 +322,13 @@ class DepotRotationOptimizer:
         if base_url is None:
             raise ValueError("BASE_URL is not set")
 
-        client = openrouteservice.Client(base_url=base_url)
+        api_key = os.environ["OPENROUTESERVICE_API_KEY"]
+        if api_key is None:
+            warnings.warn(
+                "OPENROUTESERVICE_API_KEY is not set, this only works with a private openrouteservice server without api key requirement"
+            )
+
+        client = openrouteservice.Client(base_url=base_url, key=api_key)
 
         # Run the async function
         deadhead_costs = asyncio.run(calculate_deadhead_costs(cost_df, client))
