@@ -322,11 +322,15 @@ class DepotRotationOptimizer:
         if base_url is None:
             raise ValueError("BASE_URL is not set")
 
-        api_key = os.environ["OPENROUTESERVICE_API_KEY"]
-        if api_key is None:
+        # Get API key from environment
+        if "OPENROUTESERVICE_API_KEY" in os.environ:
+            api_key = os.environ["OPENROUTESERVICE_API_KEY"]
+        else:
+            # If no API key, return None for geometry (will fall back to straight line)
             warnings.warn(
-                "OPENROUTESERVICE_API_KEY is not set, this only works with a private openrouteservice server without api key requirement"
+                "No OpenRouteService API key provided. Make sure your server does not need an API key."
             )
+            api_key = None
 
         client = openrouteservice.Client(base_url=base_url, key=api_key)
 
