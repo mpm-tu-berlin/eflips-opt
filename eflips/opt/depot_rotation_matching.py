@@ -4,7 +4,8 @@ import logging
 import os
 import warnings
 from datetime import timedelta
-from typing import Dict, List, Tuple
+from numbers import Number
+from typing import Dict, List, Tuple, Iterable
 
 import openrouteservice  # type: ignore
 import pandas as pd
@@ -155,17 +156,33 @@ class DepotRotationOptimizer:
             # Get the vehicle type
             vehicle_type = depot["vehicle_type"]
             assert isinstance(
-                vehicle_type, list
+                vehicle_type, Iterable
             ), "Vehicle type should be a list of integers"
             assert len(vehicle_type) > 0, "Vehicle type should not be empty"
 
             for vt in vehicle_type:
-                assert (
-                    self.session.query(VehicleType).filter(VehicleType.id == vt).first()
-                    is not None
-                ), f"Vehicle type {vt} not found"
+                # If it's a numver, assume it is the ID and check if it exists in the database
+                if isinstance(vt, Number):
+                    assert (
+                        self.session.query(VehicleType)
+                        .filter(VehicleType.id == vt)
+                        .one_or_none()
+                        is not None
+                    ), f"Vehicle type {vt} not found"
 
-                all_vehicle_types.append(vt)
+                    all_vehicle_types.append(int(vt))
+
+                # If it's a string, assume it's a name_short and get the ID
+                elif isinstance(vt, str):
+                    vehicle_type_obj = (
+                        self.session.query(VehicleType)
+                        .filter(VehicleType.name_short == vt)
+                        .one_or_none()
+                    )
+                    assert vehicle_type_obj is not None, f"Vehicle type {vt} not found"
+                    vt_id = vehicle_type_obj.id
+
+                    all_vehicle_types.append(int(vt_id))
 
             # Get the capacity
             capacity = depot["capacity"]
@@ -272,15 +289,24 @@ class DepotRotationOptimizer:
             vehicle_type_factors = []
             for v in total_vehicle_type:
                 assert isinstance(
-                    depot_input[i]["vehicle_type"], list
+                    depot_input[i]["vehicle_type"], Iterable
                 ), "Vehicle type should be a list of integers"
-                assert all(isinstance(vt, int) for vt in depot_input[i]["vehicle_type"]), "Vehicle type should be a list of integers"  # type: ignore
+                assert all(isinstance(vt, Number) or isinstance(vt, str) for vt in depot_input[i]["vehicle_type"]), "Vehicle type should be a list of integers or strings (being name_shorts)"  # type: ignore
                 if v in depot_input[i]["vehicle_type"]:  # type: ignore
-                    vehicle_type = (
-                        self.session.query(VehicleType)
-                        .filter(VehicleType.id == v)
-                        .first()
-                    )
+                    if isinstance(v, str):
+                        vehicle_type = (
+                            self.session.query(VehicleType)
+                            .filter(VehicleType.name_short == v)
+                            .one_or_none()
+                        )
+                    elif isinstance(v, Number):
+                        vehicle_type = (
+                            self.session.query(VehicleType)
+                            .filter(VehicleType.id == v)
+                            .one_or_none()
+                        )
+                    else:
+                        raise ValueError("Vehicle type should be either str or Number")
                     assert vehicle_type is not None, f"Vehicle type {v} not found"
                     if vehicle_type.length is None:
                         vehicle_type_factors.append(1.0)
