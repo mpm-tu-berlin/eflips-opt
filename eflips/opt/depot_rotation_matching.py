@@ -46,7 +46,8 @@ class DepotRotationOptimizer:
         self.session = session
         self.scenario_id = scenario_id
         self.data: Dict[
-            str, List[Dict[str, int | List[int] | Tuple[float, float]]] | pd.DataFrame
+            str,
+            List[Dict[str, int | List[int | str] | Tuple[float, float]]] | pd.DataFrame,
         ] = {}
 
     def _delete_original_data(self) -> None:
@@ -103,7 +104,8 @@ class DepotRotationOptimizer:
         self.session.flush()
 
     def get_depot_from_input(
-        self, user_input_depot: List[Dict[str, int | List[int] | Tuple[float, float]]]
+        self,
+        user_input_depot: List[Dict[str, int | List[int | str] | Tuple[float, float]]],
     ) -> None:
         """
 
@@ -154,12 +156,17 @@ class DepotRotationOptimizer:
                 )
 
             # Get the vehicle type
-            vehicle_type = depot["vehicle_type"]
             assert isinstance(
-                vehicle_type, Iterable
+                depot["vehicle_type"], Iterable
             ), "Vehicle type should be a list of integers"
+            assert all(
+                isinstance(vt, Number) or isinstance(vt, str)
+                for vt in depot["vehicle_type"]
+            ), "Vehicle type should be a list of integers or strings (being name_shorts)"
+            vehicle_type: List[str | int] = depot["vehicle_type"]  # type: ignore[assignment]
             assert len(vehicle_type) > 0, "Vehicle type should not be empty"
 
+            vehicle_type_id_for_str: Dict[str, int] = {}
             for vt in vehicle_type:
                 # If it's a numver, assume it is the ID and check if it exists in the database
                 if isinstance(vt, Number):
@@ -172,7 +179,8 @@ class DepotRotationOptimizer:
 
                     all_vehicle_types.append(int(vt))
 
-                # If it's a string, assume it's a name_short and get the ID
+                # If it's a string, assume it's a name_short and get the ID.
+                # Put the ID in a ductionary, and later replace the name_short with the ID
                 elif isinstance(vt, str):
                     vehicle_type_obj = (
                         self.session.query(VehicleType)
@@ -180,9 +188,14 @@ class DepotRotationOptimizer:
                         .one_or_none()
                     )
                     assert vehicle_type_obj is not None, f"Vehicle type {vt} not found"
+                    vehicle_type_id_for_str[vt] = vehicle_type_obj.id
                     vt_id = vehicle_type_obj.id
 
                     all_vehicle_types.append(int(vt_id))
+
+            for vt in vehicle_type_id_for_str:
+                vehicle_type.remove(vt)
+                vehicle_type.append(vehicle_type_id_for_str[vt])
 
             # Get the capacity
             capacity = depot["capacity"]
