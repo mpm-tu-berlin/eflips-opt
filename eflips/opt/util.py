@@ -424,4 +424,9 @@ def get_occupancy(
     occupancy_df = pd.DataFrame(
         occupancy, columns=sampled_time_stamp, index=rotation_ids
     )
+
+    # There may be times where no buses whatsoever are in the depot. Since these have no effect on
+    # depot capacity (it's just sitting empty), we can drop these columns to reduce problem size.
+    occupancy_df = occupancy_df.loc[:, (occupancy_df != 0).any(axis=0)]
+
     return occupancy_df
