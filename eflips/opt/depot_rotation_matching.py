@@ -160,6 +160,7 @@ class DepotRotationOptimizer:
             ), "Vehicle type should be a list of integers"
             assert len(vehicle_type) > 0, "Vehicle type should not be empty"
 
+            vehicle_type_id_for_str: Dict[str, int] = {}
             for vt in vehicle_type:
                 # If it's a numver, assume it is the ID and check if it exists in the database
                 if isinstance(vt, Number):
@@ -172,7 +173,8 @@ class DepotRotationOptimizer:
 
                     all_vehicle_types.append(int(vt))
 
-                # If it's a string, assume it's a name_short and get the ID
+                # If it's a string, assume it's a name_short and get the ID.
+                # Put the ID in a ductionary, and later replace the name_short with the ID
                 elif isinstance(vt, str):
                     vehicle_type_obj = (
                         self.session.query(VehicleType)
@@ -180,9 +182,14 @@ class DepotRotationOptimizer:
                         .one_or_none()
                     )
                     assert vehicle_type_obj is not None, f"Vehicle type {vt} not found"
+                    vehicle_type_id_for_str[vt] = vehicle_type_obj.id
                     vt_id = vehicle_type_obj.id
 
                     all_vehicle_types.append(int(vt_id))
+
+            for vt in vehicle_type_id_for_str:
+                vehicle_type.remove(vt)
+                vehicle_type.append(vehicle_type_id_for_str[vt])
 
             # Get the capacity
             capacity = depot["capacity"]
