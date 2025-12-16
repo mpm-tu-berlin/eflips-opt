@@ -57,7 +57,12 @@ async def deadhead_cost(
 
     coords = (point_start, point_end, point_depot)
 
-    temporary_directory = os.path.join(gettempdir(), f"eflips-ors-cache-{os.getuid()}")
+    if os.environ.get("DEPOT_ROTATION_MATCHING_ORS_CACHE") is not None:
+        temporary_directory = os.environ["DEPOT_ROTATION_MATCHING_ORS_CACHE"]
+    else:
+        temporary_directory = os.path.join(
+            gettempdir(), f"eflips-ors-cache-{os.getuid()}"
+        )
     os.makedirs(temporary_directory, exist_ok=True)
 
     file_name = f"{coords}.pkl"
