@@ -163,7 +163,7 @@ class DepotRotationOptimizer:
                 isinstance(vt, Number) or isinstance(vt, str)
                 for vt in depot["vehicle_type"]
             ), "Vehicle type should be a list of integers or strings (being name_shorts)"
-            vehicle_type: List[str | int] = depot["vehicle_type"]  # type: ignore[assignment]
+            vehicle_type: List[str | int] = list(depot["vehicle_type"])  # type: ignore[arg-type]
             assert len(vehicle_type) > 0, "Vehicle type should not be empty"
 
             vehicle_type_id_for_str: Dict[str, int] = {}
