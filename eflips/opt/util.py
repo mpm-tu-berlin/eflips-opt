@@ -96,6 +96,12 @@ async def deadhead_cost(
     inbound_shape = [(coord[1], coord[0]) for coord in inbound_shape]
     outbound_shape = [(coord[1], coord[0]) for coord in outbound_shape]
 
+    # If length 1, we need to duplicate the point to create a valid-ish linestring
+    if len(inbound_shape) == 1:
+        inbound_shape.append(inbound_shape[0])
+    if len(outbound_shape) == 1:
+        outbound_shape.append(outbound_shape[0])
+
     return {
         "distance": (
             routes[0]["routes"][0]["segments"][0]["distance"],
