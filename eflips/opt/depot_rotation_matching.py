@@ -288,43 +288,35 @@ class DepotRotationOptimizer:
         self.data["orig_assign"] = orig_assign
 
         # VehicleType-Depot availability
-        total_vehicle_type = self.session.scalars(
-            (
-                self.session.query(Rotation.vehicle_type_id)
-                .distinct(Rotation.vehicle_type_id)
-                .filter(Rotation.scenario_id == self.scenario_id)
-            )
-        ).all()
+        vehicle_type_q = (
+            self.session.query(VehicleType)
+            .join(Rotation)
+            .distinct(Rotation.vehicle_type_id)
+            .filter(Rotation.scenario_id == self.scenario_id)
+            .all()
+        )
+        total_vehicle_type: List[VehicleType] = [v for v in vehicle_type_q]
         vehicletype_depot_df = pd.DataFrame(
-            total_vehicle_type, columns=["vehicle_type_id"]
+            [v.id for v in total_vehicle_type], columns=["vehicle_type_id"]
         )
         for i in range(len(depot_input)):
             vehicle_type_factors = []
+
+            v: VehicleType
             for v in total_vehicle_type:
                 assert isinstance(
                     depot_input[i]["vehicle_type"], Iterable
                 ), "Vehicle type should be a list of integers"
                 assert all(isinstance(vt, Number) or isinstance(vt, str) for vt in depot_input[i]["vehicle_type"]), "Vehicle type should be a list of integers or strings (being name_shorts)"  # type: ignore
-                if v in depot_input[i]["vehicle_type"]:  # type: ignore
-                    if isinstance(v, str):
-                        vehicle_type = (
-                            self.session.query(VehicleType)
-                            .filter(VehicleType.name_short == v)
-                            .one_or_none()
-                        )
-                    elif isinstance(v, Number):
-                        vehicle_type = (
-                            self.session.query(VehicleType)
-                            .filter(VehicleType.id == v)
-                            .one_or_none()
-                        )
-                    else:
-                        raise ValueError("Vehicle type should be either str or Number")
-                    assert vehicle_type is not None, f"Vehicle type {v} not found"
-                    if vehicle_type.length is None:
+                if (
+                    v.id in depot_input[i]["vehicle_type"]  # type: ignore[operator]
+                    or v.name_short in depot_input[i]["vehicle_type"]  # type: ignore[operator]
+                ):
+
+                    if v.length is None:
                         vehicle_type_factors.append(1.0)
                     else:
-                        vehicle_type_factors.append(vehicle_type.length / 12.0)
+                        vehicle_type_factors.append(v.length / 12.0)
 
                 else:
                     vehicle_type_factors.append(depot_df.iloc[i]["capacity"])
