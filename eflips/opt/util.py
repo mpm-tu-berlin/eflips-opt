@@ -18,6 +18,7 @@ from eflips.model import (
     Route,
     Station,
     VehicleType,
+    TripType,
 )
 from geoalchemy2.shape import to_shape
 from shapely import LineString
@@ -209,6 +210,7 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
         trips = (
             session.query(Trip.id)
             .filter(Trip.rotation_id == rotation.id)
+            .filter(Trip.trip_type != TripType.EMPTY)
             .order_by(Trip.departure_time)
             .all()
         )
@@ -216,7 +218,7 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
         # Find the first and last non-depot station for each rotation
         start_station = (
             session.query(Station.geom)
-            .join(Route, Station.id == Route.arrival_station_id)
+            .join(Route, Station.id == Route.departure_station_id)
             .join(Trip, Trip.route_id == Route.id)
             .filter(Trip.id == trips[0][0])
             .one()[0]
@@ -224,7 +226,7 @@ def get_rotation(session: Session, scenario_id: int) -> pd.DataFrame:
 
         end_station = (
             session.query(Station.geom)
-            .join(Route, Station.id == Route.departure_station_id)
+            .join(Route, Station.id == Route.arrival_station_id)
             .join(Trip, Trip.route_id == Route.id)
             .filter(Trip.id == trips[-1][0])
             .one()[0]
