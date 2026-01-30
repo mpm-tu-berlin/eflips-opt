@@ -28,7 +28,6 @@ from eflips.opt.transition_planning.util import npv_with_escalation
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-
 from typing import Any, Dict, List, Tuple
 from sqlalchemy.orm import Session
 
@@ -51,6 +50,8 @@ class ParameterRegistry:
 
         self.vehicle_type_indices, self.vehicle_types = self._fetch_vehicle_types()
 
+        self.vehicle_deploy_time_limit = self._fetch_vehicle_deploy_time_limit()
+
         self.vehicle_electricity_consumption, self.vehicle_diesel_consumption = (
             self._fetch_vehicle_type_operational_params()
         )
@@ -69,6 +70,7 @@ class ParameterRegistry:
         )
 
         self.vehicle_driving_times = self._fetch_vehicle_driving_times()
+
         self.block_mileage = self._fetch_block_mileage()
         self.block_durations = self._fetch_block_durations()
         self.block_cost = self._fetch_block_cost()
@@ -79,6 +81,7 @@ class ParameterRegistry:
             self._calculate_vehicle_type_average_mileage()
         )
         self.time_scaling_factor_to_year = self._calculate_time_scaling_factor()
+        self.max_station_construction = self.scenario.tco_parameters.get("max_station_construction_per_year")
 
         self._initialize_npv_parameters()
 
@@ -171,6 +174,40 @@ class ParameterRegistry:
             .all()
         )
         return {dt.vehicle_id: float(dt.driving_time) / 3600.0 for dt in results}
+
+    def _fetch_vehicle_deploy_time_limit(self) -> Dict[int, float]:
+        """
+        Which describes the deployment time in which year after project start because there is a time plan for depot construction.
+        :return:
+        """
+
+        # Get vehicle-depot relationship
+        vehicles = self.vehicles
+        vehicle_deploy_time_limit = {}
+
+        depot_time_plan = self.scenario.tco_parameters.get("depot_time_plan")
+        current_year = self.scenario.tco_parameters.get("current_year")
+
+        for vehicle in vehicles:
+
+            depotstation_id_current_vehicle = (
+                vehicle.rotations[0].trips[0].route.departure_station_id
+            )
+            depotstation_name_short = self.session.query(Station.name_short).filter(Station.id == depotstation_id_current_vehicle).one()[0]
+            depot_ready_year = depot_time_plan.get(depotstation_name_short)
+
+            if depot_ready_year is None:
+                warnings.warn(
+                    f"Depot ready year for depot station {depotstation_name_short} not found in depot time plan. Assuming vehicle can be deployed from year 0."
+                )
+                vehicle_deploy_time_limit[vehicle.id] = 0
+
+            else:
+                vehicle_deploy_time_limit[vehicle.id] = depot_ready_year - current_year
+
+        return vehicle_deploy_time_limit
+
+
 
     def _fetch_block_mileage(self) -> Dict[int, float]:
         results = (
@@ -437,6 +474,35 @@ class ParameterRegistry:
         )
 
 
+class SetVariableRegistry:
+    def __init__(self, params: ParameterRegistry):
+        self.params = params
+        self.sets: Dict[str, List[Any]] = {}
+        self.variable_sets: Dict[str, Any] = {}
+        self.variable_types: Dict[str, Any] = {}
+
+        self._register_sets()
+        self._register_variables()
+
+    def _register_sets(self) -> None:
+        self.sets["V"] = self.params.vehicle_indices
+        self.sets["VT"] = self.params.vehicle_type_indices
+        self.sets["S"] = self.params.station_indices
+        self.sets["B"] = self.params.block_indices
+        self.sets["I"] = list(range(self.params.project_duration + 1))
+        self.sets["B_pairs"] = list(self.params.block_cost.keys())
+
+    def _register_variables(self) -> None:
+        self.variable_sets["X_vehicle_year"] = ["V", "I"]
+        self.variable_types["X_vehicle_year"] = pyo.Binary
+
+        self.variable_sets["Z_station_year"] = ["S", "I"]
+        self.variable_types["Z_station_year"] = pyo.Binary
+
+        self.variable_sets["U_diesel_block_schedule_year"] = ["B_pairs", "I"]
+        self.variable_types["U_diesel_block_schedule_year"] = pyo.Binary
+
+
 class ConstraintRegistry:
     """ """
 
@@ -458,7 +524,9 @@ class ConstraintRegistry:
         def no_duplicate_vehicle_electrification_rule(m, v):
             return sum(m.X_vehicle_year[v, i] for i in m.I) <= 1
 
-        self.constraints["NoDuplicatedVehicleElectrificationConstraint"] = no_duplicate_vehicle_electrification_rule
+        self.constraints["NoDuplicatedVehicleElectrificationConstraint"] = (
+            no_duplicate_vehicle_electrification_rule
+        )
         self.constraint_sets["NoDuplicatedVehicleElectrificationConstraint"] = ["V"]
 
         def initial_electric_vehicle_rule(m, v):
@@ -494,12 +562,41 @@ class ConstraintRegistry:
 
         # Station must be built before vehicle assignment
         def station_before_vehicle_rule(m, s, v, i):
+            """
+
+            Stations must be ready before vehicles are deployed to them.
+            :param m:
+            :param s:
+            :param v:
+            :param i:
+            :return:
+            """
             if self.params.station_vehicle_assignments.get((s, v)) == 0:
                 return pyo.Constraint.Skip
             return m.Z_station_year[s, i] >= m.X_vehicle_year[v, i]
 
         self.constraints["StationBeforeVehicleConstraint"] = station_before_vehicle_rule
         self.constraint_sets["StationBeforeVehicleConstraint"] = ["S", "V", "I"]
+
+        def vehicle_deploy_time_limit_rule(m, v, i):
+            """
+            Vehicle should not be deployed before its depot is ready.
+            """
+            return m.X_vehicle_year[v, i] == 0 if i < self.params.vehicle_deploy_time_limit.get(v) else pyo.Constraint.Skip
+
+        self.constraints["VehicleDeployTimeLimitConstraint"] = vehicle_deploy_time_limit_rule
+        self.constraint_sets["VehicleDeployTimeLimitConstraint"] = ["V", "I"]
+
+
+        def station_construction_per_year_rule(m, i):
+            if i == 0:
+                return pyo.Constraint.Skip
+            return sum(m.NewlyBuiltStation[s, i] for s in m.S) <= self.params.max_station_construction # TODO this is wrong!
+
+        self.constraints["StationConstructionPerYearConstraint"] = station_construction_per_year_rule
+        self.constraint_sets["StationConstructionPerYearConstraint"] = ["I"]
+
+
 
         def no_early_station_building_rule(m, s, i):
             assigned_vehicles = [
@@ -566,20 +663,19 @@ class ConstraintRegistry:
         def block_schedule_flow_conservation_rule(m, b, i):
             if b == 0:
                 return pyo.Constraint.Skip
-            # return sum(
-            #     m.U_diesel_block_schedule_year[b_t, b, i] for b_t in m.B if (b_t != b)
-            # ) == sum(
-            #     m.U_diesel_block_schedule_year[b, b_q, i] for b_q in m.B if (b != b_q)
-            # )
-            return sum(
-                m.U_diesel_block_schedule_year[b_pair, i] for b_pair in m.B_pairs if (b_pair[0] == b)
-            ) == 1 - m.Z_block_year[b, i]
+            return (
+                sum(
+                    m.U_diesel_block_schedule_year[b_pair, i]
+                    for b_pair in m.B_pairs
+                    if (b_pair[0] == b)
+                )
+                == 1 - m.Z_block_year[b, i]
+            )
 
         self.constraints["BlockScheduleFlowConservationConstraint"] = (
             block_schedule_flow_conservation_rule
         )
         self.constraint_sets["BlockScheduleFlowConservationConstraint"] = ["B", "I"]
-
 
         def block_schedule_cost_constraint_rule(m, i):
             return (
@@ -595,7 +691,6 @@ class ConstraintRegistry:
             block_schedule_cost_constraint_rule
         )
         self.constraint_sets["BlockScheduleCostConstraint"] = ["I"]
-
 
 
 class ExpressionRegistry:
@@ -621,7 +716,6 @@ class ExpressionRegistry:
 
         def newly_built_station_rule(m, s, i):
             if i == 0:
-
                 return m.Z_station_year[s, i]
             return m.Z_station_year[s, i] - m.Z_station_year[s, i - 1]
 
@@ -706,22 +800,21 @@ class ExpressionRegistry:
             # TODO this is equivalent to replacing 1/useful_life of the diesel fleet each year
             total_diesel_annuity = 0
             for vt in m.VT:
-
-                total_diesel_annuity += sum(
-                    m.U_diesel_block_schedule_year[b_pair, i]
-                    * self.params.npv_diesel_bus.get((vt, i), 0)
-                    * self.params.block_vehicle_type_assignments.get((b_pair[1], vt), 0)
-                    for b_pair in m.B_pairs
-                    if (b_pair[0] == 0)
-                ) / self.params.useful_life_electric_vehicle.get(vt)
+                # total_diesel_annuity += sum(
+                #     m.U_diesel_block_schedule_year[b_pair, i]
+                #     * self.params.npv_diesel_bus.get((vt, i), 0)
+                #     * self.params.block_vehicle_type_assignments.get((b_pair[1], vt), 0)
+                #     for b_pair in m.B_pairs
+                #     if (b_pair[0] == 0)
+                # ) / self.params.useful_life_electric_vehicle.get(vt)
 
                 # alternative
-                # total_diesel_annuity += sum(
-                #     (1 - sum(m.X_vehicle_year[v, i_t] for i_t in m.I if i_t <= i))
-                #     * self.params.vehicle_type_assignments.get((vt, v), 0)
-                #     * self.params.npv_diesel_bus.get((vt, i), 0)
-                #     for v in m.V
-                # ) / self.params.useful_life_electric_vehicle.get(vt)
+                total_diesel_annuity += sum(
+                    (1 - sum(m.X_vehicle_year[v, i_t] for i_t in m.I if i_t <= i))
+                    * self.params.vehicle_type_assignments.get((vt, v), 0)
+                    * self.params.npv_diesel_bus.get((vt, i), 0)
+                    for v in m.V
+                ) / self.params.useful_life_electric_vehicle.get(vt)
 
             return total_diesel_annuity
 
@@ -899,6 +992,25 @@ class ExpressionRegistry:
         self.expressions["DieselCost"] = diesel_cost_rule
         self.expression_sets["DieselCost"] = ["I"]
 
+        def ebus_energy_saving_rule(m, i):
+            return (
+                sum(
+                    (self.params.npv_electricity.get(i, 0) * self.params.vehicle_electricity_consumption.get(vt) -
+                     self.params.npv_diesel.get(i, 0) * self.params.vehicle_diesel_consumption.get(vt))
+                    * self.params.block_mileage.get(b)
+
+                    * m.Z_block_year[b, i]
+                    for v in m.V
+                    for vt in m.VT
+                    for b in m.B
+                    if self.params.block_vehicle_assignments.get((b, v), 0) == 1
+                    and self.params.vehicle_type_assignments.get((vt, v), 0) == 1
+                )
+                * self.params.time_scaling_factor_to_year
+            )
+        self.expressions["EbusEnergySaving"] = ebus_energy_saving_rule
+        self.expression_sets["EbusEnergySaving"] = ["I"]
+
         def maintenance_diesel_cost_rule(m, i):
             return (
                 sum(
@@ -931,6 +1043,21 @@ class ExpressionRegistry:
         self.expressions["MaintenanceElectricCost"] = maintenance_electric_cost_rule
         self.expression_sets["MaintenanceElectricCost"] = ["I"]
 
+        def ebus_maintenance_saving_rule(m, i):
+            return (
+                sum(
+                    (self.params.npv_maintenance_ev.get(i,0) - self.params.npv_maintenance_dv.get(i, 0))
+                    * self.params.block_mileage.get(b)
+                    * m.Z_block_year[b, i]
+                    for v in m.V
+                    for b in m.B
+                    if self.params.block_vehicle_assignments.get((b, v), 0) == 1
+                )
+                * self.params.time_scaling_factor_to_year
+            )
+        self.expressions["EbusMaintenanceSaving"] = ebus_maintenance_saving_rule
+        self.expression_sets["EbusMaintenanceSaving"] = ["I"]
+
         def staff_cost_ebus_rule(m, i):
             return (
                 sum(
@@ -957,6 +1084,25 @@ class ExpressionRegistry:
 
         self.expressions["StaffCostDiesel"] = staff_cost_diesel_rule
         self.expression_sets["StaffCostDiesel"] = ["I"]
+
+        def extra_staff_cost_ebus_rule(m, i):
+            ebus_staff_cost = sum(
+                self.params.vehicle_driving_times.get(v)
+                * sum(m.X_vehicle_year[v, i_t] for i_t in m.I if i_t <= i)
+                for v in m.V
+            ) * self.params.time_scaling_factor_to_year * self.params.npv_staff.get(i, 0)
+
+            diesel_staff_cost = sum(
+                self.params.block_durations.get(b, 0) * m.Z_block_year[b, i]
+                for b in m.B
+            ) * self.params.time_scaling_factor_to_year * self.params.npv_staff.get(i, 0)
+
+            return ebus_staff_cost - diesel_staff_cost
+
+        self.expressions["EbusExtraStaffCost"] = extra_staff_cost_ebus_rule
+        self.expression_sets["EbusExtraStaffCost"] = ["I"]
+
+
 
         def maintenance_infra_cost_rule(m, i):
 
@@ -993,8 +1139,11 @@ class TransitionPlannerModel:
     def __init__(
         self,
         params: ParameterRegistry,
+        set_variable_registry: SetVariableRegistry,
         constraint_registry: ConstraintRegistry,
         expression_registry: ExpressionRegistry,
+        sets: List[str],
+        variables: List[str],
         constraints: List[str],
         expressions: List[str],
         objective_components: List[str],
@@ -1002,10 +1151,14 @@ class TransitionPlannerModel:
         name: str = "Transition_Planning_Model",
     ):
         self.params = params
+
+        self.set_variable_registry = set_variable_registry
         self.constraint_registry = constraint_registry
         self.expression_registry = expression_registry
         self.model = pyo.ConcreteModel(name=name)
 
+        self.sets = sets
+        self.variables = variables
         self.expressions = expressions
         self.constraints = constraints
         self.objective_components = objective_components
@@ -1055,6 +1208,21 @@ class TransitionPlannerModel:
 
         self.result = result
 
+
+    def get_electrified_blocks(self, year: int) -> List[int]:
+        electrified_blocks = []
+        for b in self.model.B:
+            if pyo.value(self.model.Z_block_year[b, year]) >= 0.5:
+                electrified_blocks.append(b)
+        return electrified_blocks
+
+    def get_electrified_vehicles(self, year: int) -> List[int]:
+        electrified_vehicles = []
+        for v in self.model.V:
+            if pyo.value(self.model.X_vehicle_year[v, year]) >= 0.5:
+                electrified_vehicles.append(v)
+        return electrified_vehicles
+
     def visualize(self, optional_visualization_targets: Optional[List[str]] = None):
 
         vehicle_assignment = pd.DataFrame(
@@ -1065,7 +1233,8 @@ class TransitionPlannerModel:
                     "is_electric": pyo.value(self.model.X_vehicle_year[v, i]),
                 }
                 for v in self.model.V
-                for i in self.model.I if i > 0
+                for i in self.model.I
+                if i > 0
             ]
         )
 
@@ -1087,62 +1256,71 @@ class TransitionPlannerModel:
         plt.savefig(self.model.name + "_yearly_vehicle_electrification.png")
         plt.show()
 
-        # plot cumulative vehicle type
+        # # plot cumulative vehicle type
+        #
+        # vehicle_type_per_year = pd.DataFrame(
+        #     [
+        #         {
+        #             "year": i,
+        #             "vehicle_type": vt,
+        #             "num_vehicles": sum(
+        #                 pyo.value(self.model.X_vehicle_year[v, j])
+        #                 * self.params.vehicle_type_assignments.get((vt, v), 0)
+        #                 for v in self.model.V
+        #                 for j in self.model.I
+        #                 if j <= i
+        #             ),
+        #             # "num_diesel_vehicles": sum(
+        #             #     pyo.value(self.model.U_diesel_block_schedule_year[b_pair, i])
+        #             #     * self.params.block_vehicle_type_assignments.get((b_pair[1], vt), 0)
+        #             #     for b_pair in self.model.B_pairs
+        #             #     if (b_pair[0] == 0)
+        #             # ),
+        #             "num_diesel_vehicles": sum(
+        #                 (
+        #                     1
+        #                     - sum(
+        #                         pyo.value(self.model.X_vehicle_year[v, j])
+        #                         for j in self.model.I
+        #                         if j <= i
+        #                     )
+        #                 )
+        #                 * self.params.vehicle_type_assignments.get((vt, v), 0)
+        #                 for v in self.model.V
+        #             ),
+        #         }
+        #         for vt in self.model.VT
+        #         for i in self.model.I
+        #         if i > 0
+        #     ]
+        # )
 
-        vehicle_type_per_year = pd.DataFrame(
-            [
-                {
-                    "year": i,
-                    "vehicle_type": vt,
-                    "num_vehicles": sum(
-                        pyo.value(self.model.X_vehicle_year[v, j])
-                        * self.params.vehicle_type_assignments.get((vt, v), 0)
-                        for v in self.model.V
-                        for j in self.model.I
-                        if j <= i
-                    ),
-                    "num_diesel_vehicles": sum(
-                        pyo.value(self.model.U_diesel_block_schedule_year[b_pair, i])
-                        * self.params.block_vehicle_type_assignments.get((b_pair[1], vt), 0)
-                        for b_pair in self.model.B_pairs
-                        if (b_pair[0] == 0)
-                    ),
-
-                    # "num_diesel_vehicles": sum(
-                    #     (1 - sum(pyo.value(self.model.X_vehicle_year[v, j]) for j in self.model.I if j <= i))
-                    #     * self.params.vehicle_type_assignments.get((vt, v), 0)
-                    #     for v in self.model.V
-                    # ),
-                }
-                for vt in self.model.VT
-                for i in self.model.I if i > 0
-            ]
-        )
-
-        # plot num_vehicles and num_diesel_vehicles side by side for each vehicle type and year
-
-        vehicle_type_pivot = vehicle_type_per_year.pivot(
-            index="year",
-            columns="vehicle_type",
-            values=["num_vehicles", "num_diesel_vehicles"],
-        )
-
-        vehicle_type_pivot.plot(
-            kind="bar",
-            stacked=True,
-            figsize=(12, 8),
-        )
-        plt.title("Cumulative Vehicle Type Electrification Over Years")
-        plt.ylabel("Number of Vehicles Electrified")
-        plt.xlabel("Year")
-        plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-        plt.tight_layout()
-        plt.savefig(self.model.name + "_cumulative_vehicle_type_electrification.png")
-        plt.show()
-
+        # # plot num_vehicles and num_diesel_vehicles side by side for each vehicle type and year
+        #
+        # vehicle_type_pivot = vehicle_type_per_year.pivot(
+        #     index="year",
+        #     columns="vehicle_type",
+        #     values=["num_vehicles", "num_diesel_vehicles"],
+        # )
+        #
+        # vehicle_type_pivot.plot(
+        #     kind="bar",
+        #     stacked=True,
+        #     figsize=(12, 8),
+        # )
+        # plt.title("Cumulative Vehicle Type Electrification Over Years")
+        # plt.ylabel("Number of Vehicles Electrified")
+        # plt.xlabel("Year")
+        # plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+        # plt.tight_layout()
+        # plt.savefig(self.model.name + "_cumulative_vehicle_type_electrification.png")
+        # plt.show()
+        #
         dict_cost_breakdown = {
             str(exp_name): [
-                pyo.value(getattr(self.model, exp_name)[i]) for i in self.model.I if i > 0
+                pyo.value(getattr(self.model, exp_name)[i])
+                for i in self.model.I
+                if i > 0
             ]
             for exp_name in self.objective_components
         }
@@ -1151,110 +1329,82 @@ class TransitionPlannerModel:
             dict_cost_breakdown, index=[i for i in self.model.I if i > 0]
         )
 
-        yearly_cost_breakdown.plot(
-            kind="bar", stacked=True, figsize=(12, 8), colormap="tab20"
-        )
-
-        plt.title("Yearly Cost Breakdown")
-        plt.ylabel("Cost")
-        plt.xlabel("Year")
-        plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-        plt.tight_layout()
-
-        plt.savefig(self.model.name + "_yearly_cost_breakdown.png")
-        plt.show()
+        # yearly_cost_breakdown.plot(
+        #     kind="bar", stacked=True, figsize=(12, 8), colormap="tab20"
+        # )
+        #
+        # plt.title("Yearly Cost Breakdown")
+        # plt.ylabel("Cost")
+        # plt.xlabel("Year")
+        # plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+        # plt.tight_layout()
+        #
+        # plt.savefig(self.model.name + "_yearly_cost_breakdown.png")
+        # plt.show()
         # save dataframes to csv
         yearly_vehicle_assignment.to_csv(
             self.model.name + "_vehicle_assignment.csv", index=False
         )
         yearly_cost_breakdown.to_csv(self.model.name + "_yearly_cost.csv", index=False)
 
-        if optional_visualization_targets is not None:
-            dict_optional_cost_breakdown = {
-                str(exp_name): [
-                    pyo.value(getattr(self.model, exp_name)[i]) for i in self.model.I if i > 0
-                ]
-                for exp_name in optional_visualization_targets
-            }
+        # TODO debugging
 
-            optional_cost_breakdown = pd.DataFrame(
-                dict_optional_cost_breakdown, index=[i for i in self.model.I if i > 0]
-            )
-
-            optional_cost_breakdown.plot(
-                kind="bar", stacked=True, figsize=(12, 8), colormap="tab20"
-            )
-
-            plt.title("Optional Cost Breakdown")
-            plt.ylabel("Cost")
-            plt.xlabel("Year")
-            plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-            plt.tight_layout()
-            plt.savefig(self.model.name + "_optional_cost_breakdown.png")
-            plt.show()
+        for i in self.model.I:
+            print("newly built stations " + str(sum(pyo.value(self.model.NewlyBuiltStation[s, i]) for s in self.model.S)))
+        #
+        # if optional_visualization_targets is not None:
+        #     dict_optional_cost_breakdown = {
+        #         str(exp_name): [
+        #             pyo.value(getattr(self.model, exp_name)[i])
+        #             for i in self.model.I
+        #             if i > 0
+        #         ]
+        #         for exp_name in optional_visualization_targets
+        #     }
+        #
+        #     optional_cost_breakdown = pd.DataFrame(
+        #         dict_optional_cost_breakdown, index=[i for i in self.model.I if i > 0]
+        #     )
+        #
+        #     optional_cost_breakdown.plot(
+        #         kind="bar", stacked=True, figsize=(12, 8), colormap="tab20"
+        #     )
+        #
+        #     plt.title("Optional Cost Breakdown")
+        #     plt.ylabel("Cost")
+        #     plt.xlabel("Year")
+        #     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+        #     plt.tight_layout()
+        #     plt.savefig(self.model.name + "_optional_cost_breakdown.png")
+        #     plt.show()
 
     def visualize_diesel_baseline(self):
 
         raise NotImplementedError("To be implemented")
 
     def _define_sets_and_variables(self):
-        model = self.model
 
-        # sets
-        # Vehicle
-        model.V = pyo.Set(initialize=self.params.vehicle_indices, doc="Vehicle indices")
-        # Vehicle Types
-        model.VT = pyo.Set(
-            initialize=self.params.vehicle_type_indices, doc="Vehicle type indices"
-        )
-        # Blocks
-        model.B = pyo.Set(
-            initialize=self.params.block_indices + [0], doc="Block indices"
-        )
+        for set_name in self.sets:
+            setattr(
+                self.model,
+                set_name,
+                pyo.Set(initialize=self.set_variable_registry.sets[set_name]),
+            )
 
-        model.B_pairs = pyo.Set(
-            initialize=[
-                (b_t, b_q)
-                for (b_t, b_q) in self.params.block_cost.keys()
-            ],
-            doc="Block index pairs",
-        )
-        # Stations
-        model.S = pyo.Set(initialize=self.params.station_indices, doc="Station indices")
-        # Years. Year 0 is the initial scenario. It is possible that already vehicles are electric in year 0.
-        model.I = pyo.Set(
-            initialize=list(range(0, self.params.project_duration + 1)),
-            doc="Project years",
-        )
+        for variable_name in self.variables:
+            sets = [
+                getattr(self.model, s)
+                for s in self.set_variable_registry.variable_sets[variable_name]
+            ]
 
-        # Variables
-        model.X_vehicle_year = pyo.Var(
-            model.V, model.I, within=pyo.Binary, doc="Electric vehicle deployed in year"
-        )
-
-        # Auxiliary variable ? (If remove the upper constraint: each station cannot be built earlier than the first
-        # acquisition of a vehicle assigned to this sand self.block_vehicle_assignments.get((b, v), 0) == 1tation, this will because "true" variable)
-        model.Z_station_year = pyo.Var(
-            model.S,
-            model.I,
-            within=pyo.Binary,
-            doc="Station with chargers existing by the year",
-        )
-
-        model.U_diesel_block_schedule_year = pyo.Var(
-            model.B_pairs,
-            model.I,
-            within=pyo.Binary,
-            doc="Block b scheduled after block b2 in year i",
-        )
-
-        # Fix some variables in block scheduling to reduce computational burden
-        #
-        # for b_t in model.B:
-        #     for b_q in model.B:
-        #         if (b_t, b_q) not in self.params.block_cost:
-        #             for i in model.I:
-        #                 model.U_diesel_block_schedule_year[b_t, b_q, i].fix(0)
+            setattr(
+                self.model,
+                variable_name,
+                pyo.Var(
+                    *sets,
+                    within=self.set_variable_registry.variable_types[variable_name],
+                ),
+            )
 
     def _register_constraints(self):
 
@@ -1289,7 +1439,8 @@ class TransitionPlannerModel:
         def objective_rule(m):
             return sum(
                 sum(getattr(m, expr_name)[i] for expr_name in self.objective_components)
-                for i in m.I if i > 0
+                for i in m.I
+                if i > 0
             )
 
         self.model.TotalCostObjective = pyo.Objective(
