@@ -357,7 +357,7 @@ if __name__ == "__main__":
         electrified_vehicles = {}
         electrified_blocks = {}
 
-        for year in range(1, scenario.tco_parameters["projection_duration"] + 1):
+        for year in range(1, scenario.tco_parameters["project_duration"] + 1):
             electrified_vehicles[year] = model_long_term.get_electrified_vehicles(year=year)
             electrified_blocks[year] = model_long_term.get_electrified_blocks(year=year)
 
