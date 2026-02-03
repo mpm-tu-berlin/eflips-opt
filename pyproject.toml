@@ -26,7 +26,7 @@ dependencies = [
     "kaleido (==0.2.1)",
     "eflips-eval (>=1.7.6,<2.0.0)",
     "matplotlib (>=3.10.7,<4.0.0)",
-    "eflips-tco @ git+https://github.com/mpm-tu-berlin/eflips-tco.git@main",
+    "eflips-tco @ git+https://github.com/mpm-tu-berlin/eflips-tco.git@personal/shuyao",
     "polyline (>=2.0.4,<3.0.0)"
 ]
 
