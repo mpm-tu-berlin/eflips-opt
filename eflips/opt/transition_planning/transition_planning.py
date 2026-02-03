@@ -193,12 +193,13 @@ class ParameterRegistry:
             depotstation_id_current_vehicle = (
                 vehicle.rotations[0].trips[0].route.departure_station_id
             )
-            depotstation_name_short = self.session.query(Station.name_short).filter(Station.id == depotstation_id_current_vehicle).one()[0]
-            depot_ready_year = depot_time_plan.get(depotstation_name_short)
+            # depotstation_name_short = self.session.query(Station.name_short).filter(Station.id == depotstation_id_current_vehicle).one()[0]
+            depot_name = self.session.query(Depot.name).join(Station).filter(Station.id == depotstation_id_current_vehicle).one()[0]
+            depot_ready_year = depot_time_plan.get(depot_name)
 
             if depot_ready_year is None:
                 warnings.warn(
-                    f"Depot ready year for depot station {depotstation_name_short} not found in depot time plan. Assuming vehicle can be deployed from year 0."
+                    f"Depot ready year for depot station {depot_name} not found in depot time plan. Assuming vehicle can be deployed from year 0."
                 )
                 vehicle_deploy_time_limit[vehicle.id] = 0
 
