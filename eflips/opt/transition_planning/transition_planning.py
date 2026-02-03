@@ -1223,7 +1223,7 @@ class TransitionPlannerModel:
                 electrified_vehicles.append(v)
         return electrified_vehicles
 
-    def visualize(self, optional_visualization_targets: Optional[List[str]] = None):
+    def visualize(self, optional_visualization_targets: Optional[List[str]] = None, save_results: bool = False):
 
         vehicle_assignment = pd.DataFrame(
             [
@@ -1253,8 +1253,9 @@ class TransitionPlannerModel:
         plt.xlabel("Year")
         plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
-        plt.savefig(self.model.name + "_yearly_vehicle_electrification.png")
-        plt.show()
+
+        # plt.savefig(self.model.name + "_yearly_vehicle_electrification.png")
+        # plt.show()
 
         # # plot cumulative vehicle type
         #
@@ -1342,15 +1343,12 @@ class TransitionPlannerModel:
         # plt.savefig(self.model.name + "_yearly_cost_breakdown.png")
         # plt.show()
         # save dataframes to csv
-        yearly_vehicle_assignment.to_csv(
-            self.model.name + "_vehicle_assignment.csv", index=False
-        )
-        yearly_cost_breakdown.to_csv(self.model.name + "_yearly_cost.csv", index=False)
+        # yearly_vehicle_assignment.to_csv(
+        #     self.model.name + "_vehicle_assignment.csv", index=False
+        # )
+        # yearly_cost_breakdown.to_csv(self.model.name + "_yearly_cost.csv", index=False)
 
         # TODO debugging
-
-        for i in self.model.I:
-            print("newly built stations " + str(sum(pyo.value(self.model.NewlyBuiltStation[s, i]) for s in self.model.S)))
         #
         # if optional_visualization_targets is not None:
         #     dict_optional_cost_breakdown = {
@@ -1377,6 +1375,13 @@ class TransitionPlannerModel:
         #     plt.tight_layout()
         #     plt.savefig(self.model.name + "_optional_cost_breakdown.png")
         #     plt.show()
+
+        if save_results:
+            vehicle_assignment.to_csv(self.model.name + "_vehicle_assignment_detailed.csv", index=False)
+            yearly_vehicle_assignment.to_csv(self.model.name + "_yearly_vehicle_assignment_summary.csv", index=False)
+            yearly_cost_breakdown.to_csv(self.model.name + "_yearly_cost_breakdown.csv", index=False)
+
+        return yearly_vehicle_assignment, yearly_cost_breakdown
 
     def visualize_diesel_baseline(self):
 

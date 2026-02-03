@@ -642,7 +642,7 @@ name = "eflips-tco"
 version = "0.1.0"
 description = ""
 optional = false
-python-versions = ">=3.12,<3.14"
+python-versions = ">=3.11,<3.14"
 groups = ["main"]
 files = []
 develop = false
@@ -656,8 +656,8 @@ pandas = ">=2.3.0,<3.0.0"
 [package.source]
 type = "git"
 url = "https://github.com/mpm-tu-berlin/eflips-tco.git"
-reference = "HEAD"
-resolved_reference = "2e85888cb8669da725d45ef4539d5b12e70967be"
+reference = "main"
+resolved_reference = "270b429d73e4369faac87234a0fb072d2ca2362c"
 
 [[package]]
 name = "filelock"
@@ -1859,6 +1859,22 @@ files = [
 ]
 
 [[package]]
+name = "polyline"
+version = "2.0.4"
+description = "A Python implementation of Google's Encoded Polyline Algorithm Format."
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "polyline-2.0.4-py3-none-any.whl", hash = "sha256:a4e0c15b8ecb32915559f8cf210f1f8c2f5cc53d3cd32c91d7c1668d6e936e10"},
+    {file = "polyline-2.0.4.tar.gz", hash = "sha256:f05ade694522bf1720febebe1672f820f43a13c6a1664751e7769d47e8ca9b1b"},
+]
+
+[package.extras]
+dev = ["pylint (>=3.0.3,<3.1.0)", "pytest (>=7.0,<8.0)", "pytest-cov (>=4.0,<5.0)", "sphinx (>=5.3.0,<5.4.0)", "sphinx-rtd-theme (>=1.2.0,<1.3.0)", "standard-imghdr ; python_version > \"3.12\"", "tomli ; python_version < \"3.11\""]
+publish = ["build (>=0.8,<1.0)", "twine (>=6.0,<7.0)"]
+
+[[package]]
 name = "pre-commit"
 version = "3.8.0"
 description = "A framework for managing and maintaining multi-language pre-commit hooks."
@@ -2714,4 +2730,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12, <3.14"
-content-hash = "23fcb603b2abb82fc2e2f595ed66cc5350402f35f5891ec4835be874df7165d3"
+content-hash = "16d0c9f8be7627ba8e3fca7c41dd07e135cf4c8a22cbd6ee6b361a1406e08e9c"

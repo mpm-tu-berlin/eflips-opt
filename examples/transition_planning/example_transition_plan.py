@@ -109,7 +109,7 @@ if __name__ == "__main__":
                 "average_electricity_consumption": 2.16,
                 "procurement_cost_diesel_equivalent": 510000.0,
                 "cost_escalation_diesel_equivalent": 0.02,
-                "average_diesel_consumption": 0.589,
+                "average_diesel_consumption": 0.589
             },
         ]
         # We use the battery prices from Wirtschaftlichkeit von Elektromobilität in gewerblichen Anwendungen, April 2015
@@ -244,7 +244,7 @@ if __name__ == "__main__":
 
         name = "long_term_min_cost"
 
-        sets = ["V", "VT", "B", "S", "I", "B_pairs"]
+        sets = ["V", "VT", "B", "S", "I"]
         variables = [
             "X_vehicle_year",
             "Z_station_year",
@@ -350,7 +350,7 @@ if __name__ == "__main__":
             "StaffCostEbus",
             "StaffCostDiesel",
         ]
-        model_long_term.visualize(
+        model_long_term.visualize( save_results=True
             # optional_visualization_targets=optional_visualization_target
         )
 
