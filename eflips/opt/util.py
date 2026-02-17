@@ -3,6 +3,7 @@ import os
 import pickle
 import posixpath
 import urllib.parse
+from math import floor
 from tempfile import gettempdir
 from typing import Tuple, List, Dict, Coroutine, Any, Awaitable
 
@@ -389,8 +390,8 @@ def get_occupancy(
         first_trip = rotation.trips[0]
         last_trip = rotation.trips[-1]
         duration = last_trip.arrival_time - first_trip.departure_time
-        if min_duration == 0 or duration.seconds < min_duration:
-            min_duration = duration.seconds
+        if min_duration == 0 or int(floor(duration.total_seconds())) < min_duration:
+            min_duration = int(floor(duration.total_seconds()))
 
     time_window = min_duration
 
