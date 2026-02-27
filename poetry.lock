@@ -656,8 +656,8 @@ pandas = ">=2.3.0,<3.0.0"
 [package.source]
 type = "git"
 url = "https://github.com/mpm-tu-berlin/eflips-tco.git"
-reference = "personal/shuyao"
-resolved_reference = "c15012d11ab52f3a0a614d8e2dfd6eba9d90b900"
+reference = "feature/refactor-parameter-inputs"
+resolved_reference = "095eae67c1871f519fdcef7b879f14cf977912ae"
 
 [[package]]
 name = "filelock"
@@ -2730,4 +2730,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12, <3.14"
-content-hash = "af37f89cc1901915195570ab44f6583b738f3647940f281013f60c15be67916e"
+content-hash = "25a3d0d15383e0ab6e0224f52c7c4caf50b16892080f791c284a8b5fa3d83f64"

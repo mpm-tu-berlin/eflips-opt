@@ -26,7 +26,7 @@ dependencies = [
     "kaleido (==0.2.1)",
     "eflips-eval (>=1.7.6,<2.0.0)",
     "matplotlib (>=3.10.7,<4.0.0)",
-    "eflips-tco @ git+https://github.com/mpm-tu-berlin/eflips-tco.git@personal/shuyao",
+    "eflips-tco @ git+https://github.com/mpm-tu-berlin/eflips-tco.git@feature/refactor-parameter-inputs",
     "polyline (>=2.0.4,<3.0.0)"
 ]
 
@@ -46,6 +46,7 @@ pylint = "^3.2.2"
 pre-commit = "^3.7.1"
 mypy = "^1.7.1"
 types-tqdm = "^4.66.0.20240417"
+#eflips-tco = {path = "../eflips-tco", develop = true}
 
 [tool.mypy]
 plugins = "numpy.typing.mypy_plugin"
