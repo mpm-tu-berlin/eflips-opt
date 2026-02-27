@@ -36,7 +36,7 @@ VEHICLE_TYPES = [
         average_diesel_consumption=0.589,
     ),
     VehicleTypeTCOParameter(
-        name_short="GN",
+        name_short="DD",
         name="Alexander Dennis Enviro500EV large battery",
         useful_life=14,
         procurement_cost=603000.0,
@@ -59,14 +59,14 @@ BATTERY_TYPES = [
     ),
     BatteryTypeTCOParameter(
         name="Solaris Urbino 18 large battery",
-        vehicle_name_short="DD",
+        vehicle_name_short="GN",
         procurement_cost=190,
         useful_life=7,
         cost_escalation=-0.03,
     ),
     BatteryTypeTCOParameter(
         name="Alexander Dennis Enviro500EV large battery",
-        vehicle_name_short="GN",
+        vehicle_name_short="DD",
         procurement_cost=190,
         useful_life=7,
         cost_escalation=-0.03,
