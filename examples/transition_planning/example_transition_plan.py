@@ -113,7 +113,7 @@ if __name__ == "__main__":
             "Z_block_year",
             "NewlyBuiltStation",
             "ElectricBusDepreciation",
-            "DieselBusDepreciation",
+            # "DieselBusDepreciation",
             "BatteryDepreciation",
             # "StationChargerDepreciation",
             # "DepotChargerDepreciation",
@@ -140,7 +140,7 @@ if __name__ == "__main__":
 
         objective_components = [
             "ElectricBusDepreciation",
-            "DieselBusDepreciation",
+            # "DieselBusDepreciation",
             "BatteryDepreciation",
             # "StationChargerDepreciation",
             # "DepotChargerDepreciation",
