@@ -584,6 +584,11 @@ class SetVariableRegistry:
         self.variable_sets["Charger_count_depot_year"] = ["D", "I"]
         self.variable_types["Charger_count_depot_year"] = pyo.NonNegativeIntegers
 
+        self.variable_sets["Depot_year"] = ["D", "I"]
+        self.variable_types["Depot_year"] = pyo.Binary
+
+
+
 
 class ConstraintRegistry:
     """ """
@@ -659,6 +664,50 @@ class ConstraintRegistry:
 
         self.constraints["StationBeforeVehicleConstraint"] = station_before_vehicle_rule
         self.constraint_sets["StationBeforeVehicleConstraint"] = ["S", "V", "I"]
+
+        def no_depot_uninstallation_rule(m, d, i):
+            if i == 0:
+                return pyo.Constraint.Skip
+            return m.Depot_year[d, i] >= m.Depot_year[d, i - 1]
+
+        self.constraints["DepotNoUninstallation"] = (
+            no_depot_uninstallation_rule
+        )
+        self.constraint_sets["DepotNoUninstallation"] = ["D", "I"]
+
+        def initial_depot_rule(m, d):
+            return m.Depot_year[d, 0] == 0
+
+        self.constraints["InitialDepotConstraint"] = (
+            initial_depot_rule
+        )
+        self.constraint_sets["InitialDepotConstraint"] = ["D"]
+
+        def depot_before_vehicle_rule(m, d, v, i):
+            """
+            Depots must be ready before vehicles assigned to them are deployed.
+            :param m:
+            :param d:
+            :param v:
+            :param i:
+            :return:
+            """
+            if self.params.vehicle_depot_assignment.get(v) != d:
+                return pyo.Constraint.Skip
+            return m.Depot_year[d, i] >= m.X_vehicle_year[v, i]
+
+        self.constraints["DepotBeforeVehicleConstraint"] = depot_before_vehicle_rule
+        self.constraint_sets["DepotBeforeVehicleConstraint"] = ["D", "V", "I"]
+        def depot_construction_limit_rule(m, i):
+            if i == 0:
+                return pyo.Constraint.Skip
+            return sum(m.Depot_year[d, i] - m.Depot_year[d, i-1] for d in m.D) <= 2
+
+        self.constraints["DepotConstructionLimit"] = (
+            depot_construction_limit_rule
+        )
+        self.constraint_sets["DepotConstructionLimit"] = ["I"]
+
 
         def vehicle_deploy_time_limit_rule(m, v, i):
             """
@@ -843,6 +892,25 @@ class ConstraintRegistry:
 
         self.constraints["DepotChargerConstructionLimit"] = depot_charger_construction_limit
         self.constraint_sets["DepotChargerConstructionLimit"] = ["DE_pairs", "I"]
+
+        # Precompute maximum cluster size per depot for the upper bound constraint below.
+        max_cluster_size_by_depot: Dict[int, int] = {}
+        for (d_key, _e_key), vehicles in self.params.depot_charging_clusters.items():
+            max_cluster_size_by_depot[d_key] = max(
+                max_cluster_size_by_depot.get(d_key, 0), len(vehicles)
+            )
+
+        def depot_charger_requires_depot(m, d, i):
+            # Upper bound: chargers cannot be installed before the depot is built.
+            # Without this, the optimizer may pre-install chargers in early years if
+            # cost escalation makes early procurement cheaper, even though Depot_year[d,i]=0.
+            max_chargers = max_cluster_size_by_depot.get(d, 0)
+            if max_chargers == 0:
+                return pyo.Constraint.Skip
+            return m.Charger_count_depot_year[d, i] <= max_chargers * m.Depot_year[d, i]
+
+        self.constraints["DepotChargerRequiresDepot"] = depot_charger_requires_depot
+        self.constraint_sets["DepotChargerRequiresDepot"] = ["D", "I"]
 
         def depot_charger_no_uninstallation(m, d, i):
             if i == 0:
@@ -1554,6 +1622,20 @@ class TransitionPlannerModel:
             .min()
             .rename("built_year")
         )
+
+        depot_built_year = pd.DataFrame(
+            [
+                {
+                    "depot_id": d,
+                    "year": i,
+                    "built_year": pyo.value(self.model.Depot_year[d, i]) >= 0.5,
+                }
+                for d in self.model.D
+                for i in self.model.I
+
+            ]
+        )
+
         depot_charger_count_year = pd.DataFrame(
             [
                 {
@@ -1566,6 +1648,8 @@ class TransitionPlannerModel:
                 if i > 0
             ]
         )
+
+
         if save_results:
             vehicle_assignment.to_csv(
                 self.model.name + "_vehicle_assignment_detailed.csv", index=False
@@ -1579,6 +1663,9 @@ class TransitionPlannerModel:
 
             station_built_year.to_csv(
                 self.model.name + "_station_built_year.csv", index=False
+            )
+            depot_built_year.to_csv(
+                self.model.name + "_depot_built_year.csv", index=False
             )
             depot_charger_count_year.to_csv(
                 self.model.name + "_depot_charger_count_year.csv", index=False

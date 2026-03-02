@@ -85,6 +85,7 @@ if __name__ == "__main__":
             "Z_station_year",
             "Charger_count_depot_year",
             # "U_diesel_block_schedule_year",
+            "Depot_year",
         ]
 
         constraints_long_term = [
@@ -92,7 +93,11 @@ if __name__ == "__main__":
             "InitialElectrifiedStationConstraint",
             "NoStationUninstallationConstraint",
             "StationBeforeVehicleConstraint",
-            "VehicleDeployTimeLimitConstraint",
+            # "VehicleDeployTimeLimitConstraint",
+            "DepotNoUninstallation",
+            "InitialDepotConstraint",
+            "DepotBeforeVehicleConstraint",
+            "DepotConstructionLimit",
             "StationConstructionPerYearConstraint",
             # "NoEarlyStationBuildingConstraint",
             "AssignmentBlockYearConstraint",
@@ -105,6 +110,7 @@ if __name__ == "__main__":
             "DieselBusReplacementLimitUpperBound",
             "DieselBusReplacementLimitLowerBound",
             "DepotChargerConstructionLimit",
+            "DepotChargerRequiresDepot",
             "DepotChargerNoUninstallation",
             "InitialDepotChargerConstraint",
         ]
@@ -193,7 +199,7 @@ if __name__ == "__main__":
             )
             electrified_blocks[year] = model_long_term.get_electrified_blocks(year=year)
 
-        print("Electrified Vehicles by Year:")
-        print(electrified_vehicles)
+        # print("Electrified Vehicles by Year:")
+        # print(electrified_vehicles)
         # print("Electrified Blocks by Year:")
         # print(electrified_blocks)
