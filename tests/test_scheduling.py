@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 import networkx as nx
 import pytest
-from eflips.model import VehicleType, Scenario, Trip, Base
+from eflips.model import VehicleType, Scenario, Trip, Base, Rotation
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from eflips.opt.scheduling import (
     passenger_trips_by_vehicle_type,
     create_graph,
     solve,
+    write_back_rotation_plan,
 )
 
 
@@ -182,8 +183,8 @@ class TestScheduling:
         assert len(graph.nodes) > 0
         for node in graph.nodes:
             assert len(graph.nodes[node]["weight"]) == 2
-            assert graph.nodes[node]["weight"][0] == None
-            assert 0 <= graph.nodes[node]["weight"][1] <= 1
+            assert graph.nodes[node]["weight"][0] is None
+            assert 0 <= graph.nodes[node]["weight"][1] <= 86400
 
         # Each edge's weight should be a value greater than 0
         assert len(graph.edges) > 0
@@ -201,7 +202,7 @@ class TestScheduling:
             for edge in solution.edges:
                 assert edge in graph.edges
 
-    def test_solver_time_limit(self, trip_list):
+    def test_solver_time_limit(self, trip_list, session):
         # Now, create the graph for the smallest of the vehicle types
         maximum_schedule_duration = timedelta(hours=3)
 
@@ -209,17 +210,22 @@ class TestScheduling:
             trip_list, maximum_schedule_duration=maximum_schedule_duration
         )
 
-        solution = solve(graph, write_to_file=False)
+        solution = solve(
+            graph,
+            write_to_file=False,
+            maximum_schedule_duration=maximum_schedule_duration,
+        )
 
-        for connected_set in nx.weakly_connected_components(graph):
-            total_duration = sum(
-                [graph.nodes[node]["weight"][1] for node in connected_set]
-            )
-            assert total_duration <= maximum_schedule_duration.total_seconds()
+        write_back_rotation_plan(solution, session)
 
-            # Make sure that an for each edge in the result, there was an edge in the input graph
-            for edge in solution.edges:
-                assert edge in graph.edges
+        for rotation in (
+            session.query(Rotation)
+            .join(Trip)
+            .filter(Trip.id.in_([trip.id for trip in trip_list]))
+        ):
+            first_trip_start = rotation.trips[0].departure_time
+            last_trip_end = rotation.trips[-1].arrival_time
+            assert last_trip_end - first_trip_start <= maximum_schedule_duration
 
     def test_solve_both_limits(self, trip_list):
         # Create a dict of trip_id -> energy consumption
@@ -239,7 +245,11 @@ class TestScheduling:
             delta_socs=consumptions,
         )
 
-        solution = solve(graph, write_to_file=True)
+        solution = solve(
+            graph,
+            write_to_file=True,
+            maximum_schedule_duration=maximum_schedule_duration,
+        )
 
         for connected_set in nx.weakly_connected_components(solution):
             total_duration = sum(

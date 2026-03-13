@@ -1,4 +1,5 @@
 import json
+import warnings
 from typing import List, Tuple, Dict
 
 import networkx as nx  # type: ignore
@@ -28,15 +29,24 @@ def _validate_input_graph(graph: nx.Graph) -> nx.Graph:
         if len(graph.nodes[node]["weight"]) != 2:
             raise ValueError("Each node must have a tuple of exactly two weights.")
 
-        for weight in graph.nodes[node]["weight"]:
+        for i, weight in enumerate(graph.nodes[node]["weight"]):
             if not (
                 isinstance(weight, int) or isinstance(weight, float) or weight is None
             ):
                 raise ValueError(
                     "Each weight in the tuple must be an integer, float or None."
                 )
-            if weight is not None and (weight < 0 or weight > 1):
-                raise ValueError("Each weight in the tuple must be between 0 and 1.")
+            # The first weight is a delta_soc, between zero and 1
+            if i == 0 and weight is not None and (weight < 0 or weight > 1):
+                raise ValueError("Delta_soc weight must be between 0 and 1.")
+            # The second weight is a time in seconds. It should be less than 86400
+            elif i == 1 and weight is not None and (weight < 0 or weight > 86400):
+                warnings.warn(
+                    f"A trip with a duration of {weight} was provided. Trips this long are untested.",
+                    UserWarning,
+                )
+            elif i >= 2:
+                raise ValueError("More than two weights are not allowed.")
 
     for edge in graph.edges:
         if not isinstance(graph.edges[edge]["weight"], int):
