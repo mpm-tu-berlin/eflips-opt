@@ -129,17 +129,17 @@ def create_graph(
                 delta_soc = None
 
             if maximum_schedule_duration is not None:
-                duration_fraction = (
-                    trip.arrival_time - trip.departure_time
-                ) / maximum_schedule_duration
+                duration = int(
+                    (trip.arrival_time - trip.departure_time).total_seconds()
+                )
             else:
-                duration_fraction = None
+                duration = None
 
             graph.add_node(
                 trip.id,
                 name=f"{trip.route.departure_station.name} -> {trip.route.arrival_station.name} "
                 f"({trip.departure_time.strftime('%H:%M')} - {trip.arrival_time.strftime('%H:%M')})",
-                weight=(delta_soc, duration_fraction),
+                weight=(delta_soc, duration),
             )
 
     # For each trip, find all the possible following trips and add (directed) edges to them
@@ -235,7 +235,11 @@ def create_graph(
     return graph
 
 
-def solve(graph: nx.Graph, write_to_file: bool = False) -> nx.Graph:
+def solve(
+    graph: nx.Graph,
+    maximum_schedule_duration: timedelta | None = None,
+    write_to_file: bool = False,
+) -> nx.Graph:
     """
     Solve the vehicle scheduling on a directed acyclinc graph.
 
@@ -266,7 +270,15 @@ def solve(graph: nx.Graph, write_to_file: bool = False) -> nx.Graph:
             print(f"Saved file to {os.path.join(gettempdir(), 'graph.json')}")
 
     # Call the rust solver
-    result: List[Tuple[int, int]] = eflips_schedule_rust.solve(json_graph)
+    result: List[Tuple[int, int]] = eflips_schedule_rust.solve(
+        json_graph,
+        max_delta_soc=1.0,
+        max_duration=(
+            int(maximum_schedule_duration.total_seconds())
+            if maximum_schedule_duration
+            else None
+        ),
+    )
 
     # The result is a list of edges
     # Create a copy of our graph, delete all edges and add the ones from the result
