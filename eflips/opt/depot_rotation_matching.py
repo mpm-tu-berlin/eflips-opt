@@ -473,20 +473,18 @@ class DepotRotationOptimizer:
                 "No feasible solution found. Please check your constraints."
             )
 
+        # Due to float relaxation, the value of x[i, j] may not be exactly 0 or 1. We consider it as 1 if it's greater than 0.5.
         new_assign = pd.DataFrame(
             {
-                "rotation_id": [i[0] for i in model.x if model.x[i].value == 1.0],
-                "new_depot_id": [i[1] for i in model.x if model.x[i].value == 1.0],
+                "rotation_id": [i[0] for i in model.x if model.x[i].value > 0.5],
+                "new_depot_id": [i[1] for i in model.x if model.x[i].value > 0.5],
                 "assignment": [
-                    model.x[i].value for i in model.x if model.x[i].value == 1.0
+                    model.x[i].value for i in model.x if model.x[i].value > 0.5
                 ],
             }
         )
 
         self.data["result"] = new_assign
-
-        # TODO for validation
-        new_assign.to_csv("new_assign.csv")
 
     def write_optimization_results(self, delete_original_data: bool = False) -> None:
         logger = logging.getLogger(__name__)
