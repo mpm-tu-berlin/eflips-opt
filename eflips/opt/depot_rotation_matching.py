@@ -781,13 +781,14 @@ class DepotRotationOptimizer:
                 )
                 all_depot_station_ids.add(station.id)
             else:
-                all_depot_station_ids.add(depot["depot_station"])
+                all_depot_station_ids.add(int(depot["depot_station"]))  # type: ignore[arg-type]
 
         # Determine which depot stations have rotations assigned
         assert isinstance(new_assign, pd.DataFrame)
         for row in new_assign.itertuples():
-            if isinstance(depot_from_user[row.new_depot_id]["depot_station"], tuple):
-                depot_name = depot_from_user[row.new_depot_id]["name"]
+            new_depot_id = int(row.new_depot_id)  # type: ignore[arg-type]
+            if isinstance(depot_from_user[new_depot_id]["depot_station"], tuple):
+                depot_name = depot_from_user[new_depot_id]["name"]
                 station = (
                     self.session.query(Station)
                     .filter(Station.name == depot_name)
@@ -796,7 +797,9 @@ class DepotRotationOptimizer:
                 )
                 stations_with_rotations.add(station.id)
             else:
-                stations_with_rotations.add(depot_from_user[row.new_depot_id]["depot_station"])
+                stations_with_rotations.add(
+                    int(depot_from_user[new_depot_id]["depot_station"])  # type: ignore[arg-type]
+                )
 
         # Electrify stations that received rotations
         for station_id in all_depot_station_ids:
@@ -826,7 +829,9 @@ class DepotRotationOptimizer:
                 # De-electrify stations that lost all rotations
                 # Preserve charge_type if not DEPOT (e.g., terminus charging)
                 station.charge_type = (
-                    None if station.charge_type == ChargeType.DEPOT else station.charge_type
+                    None
+                    if station.charge_type == ChargeType.DEPOT
+                    else station.charge_type
                 )
                 if station.charge_type is None:
                     station.amount_charging_places = None
