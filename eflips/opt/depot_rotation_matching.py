@@ -13,12 +13,14 @@ import plotly.graph_objects as go  # type: ignore
 import pyomo.environ as pyo  # type: ignore
 import sqlalchemy.orm.session
 from eflips.model import (
+    ChargeType,
     Rotation,
     Trip,
     TripType,
     Station,
     Route,
     VehicleType,
+    VoltageLevel,
     StopTime,
     AssocRouteStation,
     Event,
@@ -763,6 +765,82 @@ class DepotRotationOptimizer:
             self.session.add_all(return_stop_times)
             new_return_trip.stop_times = return_stop_times
             self.session.add(new_return_trip)
+
+        # Update station electrification based on rotation assignments
+        # Collect all depot station IDs that received rotations
+        stations_with_rotations = set()
+        all_depot_station_ids = set()
+
+        for depot in depot_from_user:
+            if isinstance(depot["depot_station"], tuple):
+                station = (
+                    self.session.query(Station)
+                    .filter(Station.name == depot["name"])
+                    .filter(Station.scenario_id == self.scenario_id)
+                    .one()
+                )
+                all_depot_station_ids.add(station.id)
+            else:
+                all_depot_station_ids.add(int(depot["depot_station"]))  # type: ignore[arg-type]
+
+        # Determine which depot stations have rotations assigned
+        assert isinstance(new_assign, pd.DataFrame)
+        for row in new_assign.itertuples():
+            new_depot_id = int(row.new_depot_id)  # type: ignore[arg-type]
+            if isinstance(depot_from_user[new_depot_id]["depot_station"], tuple):
+                depot_name = depot_from_user[new_depot_id]["name"]
+                station = (
+                    self.session.query(Station)
+                    .filter(Station.name == depot_name)
+                    .filter(Station.scenario_id == self.scenario_id)
+                    .one()
+                )
+                stations_with_rotations.add(station.id)
+            else:
+                stations_with_rotations.add(
+                    int(depot_from_user[new_depot_id]["depot_station"])  # type: ignore[arg-type]
+                )
+
+        # Electrify stations that received rotations
+        for station_id in all_depot_station_ids:
+            station = self.session.query(Station).filter(Station.id == station_id).one()
+            if station_id in stations_with_rotations:
+                station.is_electrified = True
+                station.charge_type = ChargeType.DEPOT
+                station.amount_charging_places = (
+                    station.amount_charging_places
+                    if station.amount_charging_places is not None
+                    else 9999
+                )
+                station.power_per_charger = (
+                    station.power_per_charger
+                    if station.power_per_charger is not None
+                    else 1000
+                )
+                station.power_total = (
+                    station.power_total if station.power_total is not None else 1000000
+                )
+                station.voltage_level = (
+                    station.voltage_level
+                    if station.voltage_level is not None
+                    else VoltageLevel.MV
+                )
+            else:
+                # De-electrify stations that lost all rotations
+                # Preserve charge_type if not DEPOT (e.g., terminus charging)
+                station.charge_type = (
+                    None
+                    if station.charge_type == ChargeType.DEPOT
+                    else station.charge_type
+                )
+                if station.charge_type is None:
+                    station.amount_charging_places = None
+                    station.power_per_charger = None
+                    station.power_total = None
+                    station.voltage_level = None
+                    station.is_electrified = False
+
+        self.session.flush()
 
     def visualize(self) -> go.Figure:
         """
