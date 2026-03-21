@@ -298,8 +298,8 @@ class SmartChargingEvent:
         delta_soc_from_event = event.soc_end - event.soc_start
         delta_soc_from_optimization = socs[-1] - socs[0]
 
-        # Scale down
-        assert delta_soc_from_optimization <= delta_soc_from_event
+        # Scale down (tolerance for IEEE 754 floating-point rounding)
+        assert delta_soc_from_optimization <= delta_soc_from_event + 1e-9
         scale_factor = delta_soc_from_event / delta_soc_from_optimization
         socs *= scale_factor
 
