@@ -14,7 +14,7 @@ import sqlalchemy.orm.session
 from eflips.model import Depot
 from eflips.model import Event, EventType, Area
 
-TIME_STEP_DURATION = timedelta(minutes=5)  # Maybe change this to 1 minute`TODO
+TIME_STEP_DURATION = timedelta(minutes=5)
 POWER_QUANTIZATION = 10  # kW
 ENERGY_PER_PACKET = (
     TIME_STEP_DURATION.total_seconds() / 3600
@@ -121,7 +121,7 @@ class SmartChargingEvent:
     original_event: Event
     """The original event that is being optimized."""
 
-    vehicle_present: npt.NDArray[np.bool]
+    vehicle_present: npt.NDArray[np.bool_]
     """Array of booleans indicating whether a vehicle is present at each time step."""
 
     energy_packets_needed: float
@@ -130,7 +130,7 @@ class SmartChargingEvent:
     energy_packets_per_time_step: float | None
     """How many energy packets can be transferred per time step (quantized max power)."""
 
-    energy_packets_transferred: npt.NDArray[np.int64]
+    energy_packets_transferred: npt.NDArray[np.float64]
     """The number of energy packets transferred at each time step (this is the result)."""
 
     charging_curve_values_in_rate: Dict[float, float] | None
@@ -175,9 +175,7 @@ class SmartChargingEvent:
         energy_transferred = event.vehicle.vehicle_type.battery_capacity * (
             event.soc_end - event.soc_start
         )
-        energy_packets_needed = int(
-            np.floor(energy_transferred / ENERGY_PER_PACKET)
-        )  # Rounded up, wo we may have to increase the energy transferred later
+        energy_packets_needed = energy_transferred / ENERGY_PER_PACKET
 
         # Charging with constant power
         if not support_charging_curve:
@@ -263,7 +261,9 @@ class SmartChargingEvent:
             vehicle_present=vehicle_present,
             energy_packets_needed=energy_packets_needed,
             energy_packets_per_time_step=energy_packets_per_time_step,
-            energy_packets_transferred=np.zeros(len(time_step_starts), dtype=int),
+            energy_packets_transferred=np.zeros(
+                len(time_step_starts), dtype=np.float64
+            ),
             charging_curve_values_in_rate=charging_curve_values_in_rate,
         )
 
@@ -301,6 +301,12 @@ class SmartChargingEvent:
         # Scale down (tolerance for IEEE 754 floating-point rounding)
         assert delta_soc_from_optimization <= delta_soc_from_event + 1e-9
         scale_factor = delta_soc_from_event / delta_soc_from_optimization
+        if scale_factor > 1.001:
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Scale factor {scale_factor:.4f} for event {event.id} is significantly above 1.0. "
+                f"This may indicate energy loss during optimization."
+            )
         socs *= scale_factor
 
         # Add the initial SoC
@@ -314,7 +320,6 @@ class SmartChargingEvent:
         socs = np.append(socs, event.soc_end)
 
         # Make sure socs is a list of floats
-        socs_list = list(socs)
         socs_float_list = [float(s) for s in socs]
 
         # Handling rounding errors
@@ -400,6 +405,7 @@ def optimize_charging_events_even(charging_events: List[Event]) -> None:
 
     except ValueError as e:
         logger.error(f"Optimization failed: {e}")
+        return
 
     # Update the original events
     for smart_event in updated_events:
@@ -647,42 +653,125 @@ def solve_peak_shaving(
         solver = pyo.SolverFactory("glpk")
     else:
         solver = pyo.SolverFactory("gurobi_direct")
+        solver.options["Threads"] = 4
 
     # Solve the model
     logger.info("Solving the peak shaving problem...")
-
-    solver.options["Threads"] = 4
 
     result = solver.solve(model, tee=False)
     logger.info(f"Solver status: {result.solver.status}")
 
     # Check if an optimal solution was found
-    if (
+    if not (
         result.solver.status == pyo.SolverStatus.ok
         and result.solver.termination_condition == pyo.TerminationCondition.optimal
     ):
-        # Update charging schedules with the optimal solution
-        for v in model.V:
-            # Initialize all timesteps to zero
-            for t in range(len(charging_events[v].energy_packets_transferred)):
-                charging_events[v].energy_packets_transferred[t] = 0
-
-            # Update only the timesteps where the vehicle is present
-            for v_idx, t in model.VT_present:
-                if v_idx == v and t < len(
-                    charging_events[v].energy_packets_transferred
-                ):
-                    charging_events[v].energy_packets_transferred[t] = model.x[
-                        v_idx, t
-                    ].value
-
-        # Calculate the actual peak power in kW
-        peak_power = model.peak.value * POWER_QUANTIZATION
-        return charging_events, peak_power
-    else:
-        # No optimal solution found
         error_msg = f"Failed to find an optimal solution. Status: {result.solver.status}, Termination: {result.solver.termination_condition}"
         raise ValueError(error_msg)
+
+    optimal_peak = model.peak.value
+    peak_power = optimal_peak * POWER_QUANTIZATION
+    logger.info(
+        f"Phase 1 complete. Optimal peak power: {peak_power:.2f} kW. "
+        f"Starting phase 2 (evenness tiebreaker)..."
+    )
+
+    # Phase 2: Fix peak at optimal value and minimize per-vehicle step-to-step variation
+    # This breaks the degeneracy in the minimax objective and produces smooth profiles.
+
+    # Fix the peak at the optimal value (with small epsilon for numerical stability)
+    epsilon = 1e-6
+    model.fix_peak = pyo.Constraint(
+        expr=model.peak <= optimal_peak + epsilon,
+        doc="Fix peak at optimal value from phase 1",
+    )
+
+    # Build consecutive-timestep pairs for each vehicle
+    # For each vehicle, find pairs of consecutive timesteps where the vehicle is present
+    vehicle_timesteps: Dict[int, List[int]] = {}
+    for v, t in model.VT_present:
+        if v not in vehicle_timesteps:
+            vehicle_timesteps[v] = []
+        vehicle_timesteps[v].append(t)
+    for v in vehicle_timesteps:
+        vehicle_timesteps[v].sort()
+
+    consecutive_pairs = []
+    for v, ts in vehicle_timesteps.items():
+        for i in range(len(ts) - 1):
+            consecutive_pairs.append((v, ts[i], ts[i + 1]))
+
+    model.ConsecPairs = pyo.Set(
+        initialize=consecutive_pairs,
+        doc="Set of (vehicle, t1, t2) consecutive present timestep pairs",
+    )
+
+    # Auxiliary variables for absolute differences: d[v,t1,t2] >= |x[v,t2] - x[v,t1]|
+    model.d = pyo.Var(
+        model.ConsecPairs,
+        domain=pyo.NonNegativeReals,
+        doc="Absolute difference in charging rate between consecutive timesteps",
+    )
+
+    def abs_diff_pos_rule(model, v, t1, t2):  # type: ignore
+        return model.d[v, t1, t2] >= model.x[v, t2] - model.x[v, t1]
+
+    def abs_diff_neg_rule(model, v, t1, t2):  # type: ignore
+        return model.d[v, t1, t2] >= model.x[v, t1] - model.x[v, t2]
+
+    model.abs_diff_pos = pyo.Constraint(
+        model.ConsecPairs,
+        rule=abs_diff_pos_rule,
+        doc="Linearize absolute difference (positive direction)",
+    )
+    model.abs_diff_neg = pyo.Constraint(
+        model.ConsecPairs,
+        rule=abs_diff_neg_rule,
+        doc="Linearize absolute difference (negative direction)",
+    )
+
+    # Replace the objective: minimize total variation
+    model.objective.deactivate()
+    model.evenness_objective = pyo.Objective(
+        expr=sum(model.d[v, t1, t2] for (v, t1, t2) in model.ConsecPairs),
+        sense=pyo.minimize,
+        doc="Minimize total step-to-step variation across all vehicles",
+    )
+
+    # Solve phase 2
+    result2 = solver.solve(model, tee=False)
+    logger.info(f"Phase 2 solver status: {result2.solver.status}")
+
+    if not (
+        result2.solver.status == pyo.SolverStatus.ok
+        and result2.solver.termination_condition == pyo.TerminationCondition.optimal
+    ):
+        # Phase 2 failed — fall back to phase 1 solution
+        logger.warning(
+            f"Phase 2 (evenness) failed: {result2.solver.termination_condition}. "
+            f"Using phase 1 solution."
+        )
+        # Re-solve phase 1 (deactivate phase 2 components, reactivate original objective)
+        model.fix_peak.deactivate()
+        model.abs_diff_pos.deactivate()
+        model.abs_diff_neg.deactivate()
+        model.evenness_objective.deactivate()
+        model.objective.activate()
+        solver.solve(model, tee=False)
+
+    # Extract solution (works for both phase 1 fallback and phase 2 success)
+    # Zero out all arrays first
+    for v in model.V:
+        charging_events[v].energy_packets_transferred[:] = 0.0
+
+    # Single pass over VT_present — O(|VT_present|) instead of O(V × |VT_present|)
+    for v_idx, t in model.VT_present:
+        if t < len(charging_events[v_idx].energy_packets_transferred):
+            charging_events[v_idx].energy_packets_transferred[t] = model.x[
+                v_idx, t
+            ].value
+
+    return charging_events, peak_power
 
 
 def add_slack_time_to_events_of_depot(
