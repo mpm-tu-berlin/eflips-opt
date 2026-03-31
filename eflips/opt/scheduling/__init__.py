@@ -26,8 +26,18 @@ import networkx as nx  # type: ignore
 import numpy as np
 import sqlalchemy.orm.session
 from dash import html
-from eflips.model import Rotation, Scenario, Station, Trip, TripType, VehicleType
+from eflips.model import (
+    Rotation,
+    Scenario,
+    Station,
+    Trip,
+    TripType,
+    VehicleType,
+    Route,
+    Line,
+)
 from networkx.classes import Graph  # type: ignore
+from sqlalchemy import func
 
 from eflips.opt.scheduling.util import _validate_input_graph, _graph_to_json
 
@@ -288,8 +298,48 @@ def solve(
     return result_graph
 
 
+def name_for_rotation(
+    rotation: Rotation, session: sqlalchemy.orm.session.Session
+) -> str:
+    """
+    Creates a name for a rotation based on the lines of the trips in the rotation. The rotation is named first by
+    the wekday and time of the first passenger trip, and then by the lines of the trips in the rotation.
+
+    Up to three lines are included in the name, separated by commas. If there are more than three lines, "..." is added
+    at the end.
+    """
+    first_passenger_trip = (
+        session.query(Trip)
+        .filter(Trip.rotation == rotation, Trip.trip_type == TripType.PASSENGER)
+        .order_by(Trip.departure_time)
+        .first()
+    )
+    if first_passenger_trip is None:
+        return "Empty Rotation"
+
+    lines_and_counts = (
+        session.query(Line, func.count(Line.id))
+        .join(Route)
+        .join(Trip)
+        .filter(Trip.rotation_id == rotation.id)
+        .group_by(Line.id)
+        .order_by(func.count(Line.id).desc())
+        .all()
+    )
+
+    lines = [line.name for line, count in lines_and_counts]
+    name = f"{first_passenger_trip.departure_time.strftime('%a %H:%M')}: " + ", ".join(
+        lines[:3]
+    )
+    if len(lines) > 3:
+        name += ", ..."
+    return name
+
+
 def write_back_rotation_plan(
-    rot_graph: nx.Graph, session: sqlalchemy.orm.session.Session
+    rot_graph: nx.Graph,
+    session: sqlalchemy.orm.session.Session,
+    auto_assign_rotation_names: bool = True,
 ) -> None:
     """
     Deletes the original rotations and writes back the new rotations to the database. This is useful when the new
@@ -297,6 +347,8 @@ def write_back_rotation_plan(
 
     :param rot_graph: A directed acyclic graph containing the new rotations.
     :param session: An open database session.
+    :param auto_assign_rotation_names: If True, the new rotations will be automatically named based on the lines
+        of the trips in the rotation. If False, the new rotations will not be named.
     :return: Nothing. The new rotations are written to the database.
     """
     # Find the original rotations
@@ -342,6 +394,19 @@ def write_back_rotation_plan(
             rotation.trips = sorted(
                 rotation.trips, key=lambda trip: trip.departure_time
             )
+        session.flush()
+
+    if auto_assign_rotation_names:
+        # Assign names to the new rotations
+        new_rotations = (
+            session.query(Rotation)
+            .filter(Rotation.scenario_id == scenario_id)
+            .join(Trip)
+            .filter(Trip.id.in_(rot_graph.nodes))
+            .all()
+        )
+        for rotation in new_rotations:
+            rotation.name = name_for_rotation(rotation, session)
         session.flush()
 
 
