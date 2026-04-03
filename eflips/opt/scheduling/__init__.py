@@ -327,7 +327,7 @@ def name_for_rotation(
         .all()
     )
 
-    lines = [line.name_short for line, count in lines_and_counts]
+    lines = [line.name_short or line.name for line, count in lines_and_counts]
     name = f"{first_passenger_trip.departure_time.strftime('%a %H:%M')}: " + ", ".join(
         lines[:3]
     )
