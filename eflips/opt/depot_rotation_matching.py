@@ -6,7 +6,7 @@ import warnings
 from datetime import timedelta
 from numbers import Number
 from typing import Dict, List, Tuple, Iterable
-
+from eflips.ingest.util import geometry_has_z, get_altitude
 import openrouteservice  # type: ignore
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
@@ -28,7 +28,7 @@ from eflips.model import (
 )
 from geoalchemy2.shape import to_shape, from_shape
 from pyomo.common.timing import report_timing  # type: ignore
-from shapely import Point
+from shapely import Point, LineString
 from sqlalchemy import func
 
 from eflips.opt.util import (
@@ -525,13 +525,28 @@ class DepotRotationOptimizer:
                     Station.scenario_id == self.scenario_id,
                 )
                 if station_q.count() == 0:
+                    geom = from_shape(
+                        Point(depot["depot_station"][0], depot["depot_station"][1]),
+                        srid=4326,
+                    )
+                    if geometry_has_z():
+                        # depot_station is (lon, lat); get_altitude expects (lat, lon).
+                        altitude = get_altitude(
+                            (depot["depot_station"][1], depot["depot_station"][0])
+                        )
+                        geom = from_shape(
+                            Point(
+                                depot["depot_station"][0],
+                                depot["depot_station"][1],
+                                altitude,
+                            ),
+                            srid=4326,
+                        )
+
                     new_depot_station = Station(
                         name=depot["name"],
                         scenario_id=self.scenario_id,
-                        geom=from_shape(
-                            Point(depot["depot_station"][0], depot["depot_station"][1]),
-                            srid=4326,
-                        ),
+                        geom=geom,
                         is_electrified=False,  # TODO Hardcoded for now
                     )
                     self.session.add(new_depot_station)
@@ -577,16 +592,43 @@ class DepotRotationOptimizer:
             ferry_route_duration = route_cost["duration"][0]
             return_route_duration = route_cost["duration"][1]
 
-            # The Geometry is stored in the route_cost["geometry"] as a shapely LineString
-            ferry_route_shape = from_shape(route_cost["geometry"][0], srid=4326)
-            return_route_shape = from_shape(route_cost["geometry"][1], srid=4326)
+            # Keep a 2D version for ST_Length: the Z values are altitudes in
+            # metres while X/Y are degrees, so a 3D length would mix units.
+            # Building the 2D geometry in Python also avoids the PostGIS vs.
+            # SpatiaLite naming split for the Z-stripping function.
+            ferry_route_shape_2d = from_shape(route_cost["geometry"][0], srid=4326)
+            return_route_shape_2d = from_shape(route_cost["geometry"][1], srid=4326)
 
-            # Calculate the distance using ST_Length
+            if geometry_has_z():
+                # Shapely coords are (lon, lat); get_altitude expects (lat, lon).
+                ferry_route_points_with_alt = []
+                return_route_points_with_alt = []
+                for coord in list(route_cost["geometry"][0].coords):
+                    altitude = get_altitude((coord[1], coord[0]))
+                    ferry_route_points_with_alt.append(
+                        Point(coord[0], coord[1], altitude)
+                    )
+                for coord in list(route_cost["geometry"][1].coords):
+                    altitude = get_altitude((coord[1], coord[0]))
+                    return_route_points_with_alt.append(
+                        Point(coord[0], coord[1], altitude)
+                    )
+                ferry_route_shape = from_shape(
+                    LineString(ferry_route_points_with_alt), srid=4326
+                )
+                return_route_shape = from_shape(
+                    LineString(return_route_points_with_alt), srid=4326
+                )
+            else:
+                ferry_route_shape = ferry_route_shape_2d
+                return_route_shape = return_route_shape_2d
+
+            # ST_Length on the 2D shapes; second arg = use_spheroid.
             ferry_route_distance_from_shape = self.session.query(
-                func.ST_Length(ferry_route_shape, True)
+                func.ST_Length(ferry_route_shape_2d, True)
             ).scalar()
             return_route_distance_from_shape = self.session.query(
-                func.ST_Length(return_route_shape, True)
+                func.ST_Length(return_route_shape_2d, True)
             ).scalar()
 
             # If they differ by more than 50 meters, log a warning

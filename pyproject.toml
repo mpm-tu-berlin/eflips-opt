@@ -1,6 +1,6 @@
 [project]
 name = "eflips-opt"
-version = "1.0.8"
+version = "1.0.9"
 description = "A collection of pre-simulation optimization algorithms for eFLIPS."
 authors = [
     { name = "Ludger Heide", email = "ludger.heide@tu-berlin.de" },
@@ -25,6 +25,7 @@ dependencies = [
     "dash-cytoscape (>=1.0.2, <2.0)",
     "kaleido (==0.2.1)",
     "polyline (>=2.0.3,<3.0.0)",
+    "eflips-ingest (>=1.6.2,<2.0.0)",
 ]
 
 [tool.poetry]
