@@ -6,7 +6,7 @@ import warnings
 from datetime import timedelta
 from numbers import Number
 from typing import Dict, List, Tuple, Iterable
-from eflips.ingest.util import geometry_has_z, get_altitude
+from eflips.model.util import geometry_has_z, get_altitude
 import openrouteservice  # type: ignore
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
