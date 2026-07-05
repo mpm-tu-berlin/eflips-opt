@@ -5,7 +5,7 @@ import os
 import warnings
 from datetime import timedelta
 from numbers import Number
-from typing import Dict, List, Tuple, Iterable
+from typing import Dict, List, Optional, Tuple, Iterable
 from eflips.model.util import geometry_has_z, get_altitude
 import openrouteservice  # type: ignore
 import pandas as pd
@@ -43,14 +43,60 @@ from eflips.opt.util import (
 
 class DepotRotationOptimizer:
     def __init__(
-        self, session: sqlalchemy.orm.session.Session, scenario_id: int
+        self,
+        session: sqlalchemy.orm.session.Session,
+        scenario_id: int,
+        reassigned_rotations: Optional[List[int]] = None,
     ) -> None:
+        """
+        :param session: a :class:`sqlalchemy.orm.Session` connected to the database.
+        :param scenario_id: the id of the scenario to optimize.
+        :param reassigned_rotations: an optional list of rotation ids that should take part in the
+            reassignment. Only these rotations are reassigned; all other rotations remain untouched
+            (they keep their current depot, deadhead trips and depot electrification). If ``None``
+            (the default), all rotations of the scenario are reassigned.
+        """
         self.session = session
         self.scenario_id = scenario_id
+        # The rotations that take part in the reassignment. ``None`` is resolved to all rotations of
+        # the scenario, so downstream code can always treat this as a concrete list of ids.
+        self.reassigned_rotations: List[int] = self._resolve_reassigned_rotations(
+            reassigned_rotations
+        )
         self.data: Dict[
             str,
             List[Dict[str, int | List[int | str] | Tuple[float, float]]] | pd.DataFrame,
         ] = {}
+
+    def _resolve_reassigned_rotations(
+        self, reassigned_rotations: Optional[List[int]]
+    ) -> List[int]:
+        """
+        Validate the user-provided rotation ids and resolve ``None`` to all rotations of the scenario.
+
+        :param reassigned_rotations: the ids passed to the constructor, or ``None``.
+        :return: the list of rotation ids that will be reassigned.
+        :raises ValueError: if any provided id does not belong to a rotation of this scenario.
+        """
+        all_rotation_ids = [
+            r[0]
+            for r in self.session.query(Rotation.id)
+            .filter(Rotation.scenario_id == self.scenario_id)
+            .all()
+        ]
+
+        if reassigned_rotations is None:
+            return all_rotation_ids
+
+        # Deduplicate while preserving the caller's order.
+        requested_ids = list(dict.fromkeys(reassigned_rotations))
+        invalid_ids = [r for r in requested_ids if r not in set(all_rotation_ids)]
+        if invalid_ids:
+            raise ValueError(
+                f"The following reassigned_rotations are not rotations of scenario "
+                f"{self.scenario_id}: {invalid_ids}"
+            )
+        return requested_ids
 
     def _delete_original_data(self) -> None:
         """
@@ -61,10 +107,12 @@ class DepotRotationOptimizer:
         :return: Nothing. The original data will be deleted from the database.
         """
 
-        # Get the rotations
+        # Get the rotations. Only the reassigned rotations get new deadhead trips, so we must only
+        # delete the original deadhead trips of those rotations - the untouched rotations keep theirs.
         rotations = (
             self.session.query(Rotation)
             .filter(Rotation.scenario_id == self.scenario_id)
+            .filter(Rotation.id.in_(self.reassigned_rotations))
             .all()
         )
 
@@ -131,7 +179,7 @@ class DepotRotationOptimizer:
         # - if the capacity is a positive integer
         # - if the vehicle type in the rotations are available in all the depots
 
-        all_vehicle_types = []
+        all_vehicle_types_from_input = []
         # Get the station
         for depot in user_input_depot:
             station = depot["depot_station"]
@@ -170,7 +218,7 @@ class DepotRotationOptimizer:
 
             vehicle_type_id_for_str: Dict[str, int] = {}
             for vt in vehicle_type:
-                # If it's a numver, assume it is the ID and check if it exists in the database
+                # If it's a number, assume it is the ID and check if it exists in the database
                 if isinstance(vt, Number):
                     assert (
                         self.session.query(VehicleType)
@@ -179,7 +227,7 @@ class DepotRotationOptimizer:
                         is not None
                     ), f"Vehicle type {vt} not found"
 
-                    all_vehicle_types.append(int(vt))
+                    all_vehicle_types_from_input.append(int(vt))
 
                 # If it's a string, assume it's a name_short and get the ID.
                 # Put the ID in a ductionary, and later replace the name_short with the ID
@@ -193,7 +241,7 @@ class DepotRotationOptimizer:
                     vehicle_type_id_for_str[vt] = vehicle_type_obj.id
                     vt_id = vehicle_type_obj.id
 
-                    all_vehicle_types.append(int(vt_id))
+                    all_vehicle_types_from_input.append(int(vt_id))
 
             for vt in vehicle_type_id_for_str:
                 vehicle_type.remove(vt)
@@ -208,18 +256,19 @@ class DepotRotationOptimizer:
 
         # Check if the vehicle types in the rotations are available in all the depots
 
-        all_vehicle_types = list(set(all_vehicle_types))
-        all_vehicle_types.sort()
+        all_vehicle_types_from_input = list(set(all_vehicle_types_from_input))
+        all_vehicle_types_from_input.sort()
         all_demanded_types = (
             self.session.query(Rotation.vehicle_type_id)
             .filter(Rotation.scenario_id == self.scenario_id)
+            .filter(Rotation.id.in_(self.reassigned_rotations))
             .distinct(Rotation.vehicle_type_id)
             .order_by(Rotation.vehicle_type_id)
             .all()
         )
 
         for vt in [vt.vehicle_type_id for vt in all_demanded_types]:
-            if vt not in all_vehicle_types:
+            if vt not in all_vehicle_types_from_input:
                 raise ValueError(
                     "Not all demanded vehicle types are available in all depots"
                 )
@@ -334,17 +383,31 @@ class DepotRotationOptimizer:
         vehicle_type_df = get_vehicletype(self.session, self.scenario_id)
         self.data["vehicle_type"] = vehicle_type_df
 
-        # Rotation related data
+        # Rotation related data. Only the reassigned rotations take part in the optimization, so we
+        # restrict the rotation-keyed tables to that subset. Restricting ``rotation`` here also means
+        # the (expensive) deadhead cost lookups below are only computed for the rotations we move.
+        reassigned_ids = set(self.reassigned_rotations)
+
         # Get the start and end station of each rotation
         rotation_df = get_rotation(self.session, self.scenario_id)
+        rotation_df = rotation_df[
+            rotation_df["rotation_id"].isin(reassigned_ids)
+        ].reset_index(drop=True)
         self.data["rotation"] = rotation_df
 
         # Get the assignment between vehicle type and rotation
         assignment = get_rotation_vehicle_assign(self.session, self.scenario_id)
+        assignment = assignment[
+            assignment["rotation_id"].isin(reassigned_ids)
+        ].reset_index(drop=True)
         self.data["assignment"] = assignment
 
         # Get time-wise occupancy of each rotation
         occupancy_df = get_occupancy(self.session, self.scenario_id)
+        occupancy_df = occupancy_df.loc[occupancy_df.index.isin(reassigned_ids)]
+        # Dropping the untouched rotations may leave time slots that no remaining rotation occupies;
+        # those columns add only slack constraints, so we drop them to keep the model small.
+        occupancy_df = occupancy_df.loc[:, (occupancy_df != 0).any(axis=0)]
         self.data["occupancy"] = occupancy_df
 
         # Generate cost table
@@ -842,6 +905,20 @@ class DepotRotationOptimizer:
                 stations_with_rotations.add(
                     int(depot_from_user[new_depot_id]["depot_station"])  # type: ignore[arg-type]
                 )
+
+        # Untouched rotations keep their current depot, so any candidate depot that still serves such
+        # a rotation must not be de-electrified below. Add their original depot stations as well.
+        orig_assign = self.data["orig_assign"]
+        assert isinstance(orig_assign, pd.DataFrame)
+        untouched_ids = set(orig_assign["rotation_id"].tolist()) - set(
+            self.reassigned_rotations
+        )
+        untouched_depot_stations = orig_assign[
+            orig_assign["rotation_id"].isin(untouched_ids)
+        ]["orig_depot_station"].tolist()
+        for station_id in untouched_depot_stations:
+            if int(station_id) in all_depot_station_ids:
+                stations_with_rotations.add(int(station_id))
 
         # Electrify stations that received rotations
         for station_id in all_depot_station_ids:
