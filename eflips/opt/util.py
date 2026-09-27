@@ -4,8 +4,8 @@ import pickle
 import posixpath
 import urllib.parse
 from math import floor
-from tempfile import gettempdir
-from typing import Tuple, List, Dict, Coroutine, Any, Awaitable
+from tempfile import gettempdir, mkstemp
+from typing import Tuple, List, Dict, Coroutine, Any, Awaitable, Optional
 
 import numpy as np
 import openrouteservice  # type: ignore
@@ -25,6 +25,43 @@ from geoalchemy2.shape import to_shape
 from shapely import LineString
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+
+def _load_cached_routes(file_path: str) -> Optional[Any]:
+    """
+    Load cached routes from a pickle file.
+
+    A missing or unreadable (e.g. truncated) file is treated as a cache miss.
+
+    :param file_path: Path of the cache file
+    :return: The cached routes, or None if they could not be loaded
+    """
+    try:
+        with open(file_path, "rb") as file:
+            return pickle.load(file)
+    except (FileNotFoundError, EOFError, pickle.UnpicklingError):
+        return None
+
+
+def _store_cached_routes(file_path: str, routes: Any) -> None:
+    """
+    Atomically write routes to a pickle cache file.
+
+    The data is written to a temporary file in the same directory and then renamed into place, so
+    that concurrent readers (e.g. other processes sharing the cache) never see a partially written
+    file.
+
+    :param file_path: Path of the cache file
+    :param routes: The routes to cache
+    """
+    fd, tmp_path = mkstemp(dir=os.path.dirname(file_path), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as file:
+            pickle.dump(routes, file)
+        os.replace(tmp_path, file_path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 async def deadhead_cost(
@@ -70,10 +107,8 @@ async def deadhead_cost(
     file_name = f"{coords}.pkl"
     file_path = os.path.join(temporary_directory, file_name)
 
-    if os.path.exists(file_path):
-        with open(file_path, "rb") as file:
-            routes = pickle.load(file)
-    else:
+    routes = _load_cached_routes(file_path)
+    if routes is None:
         routes_ferry = client.request(
             url=new_url,
             post_json={
@@ -88,8 +123,7 @@ async def deadhead_cost(
 
         routes = (routes_ferry, routes_return)
 
-        with open(file_path, "wb") as file:
-            pickle.dump(routes, file)
+        _store_cached_routes(file_path, routes)
 
     inbound_shape = polyline.decode(routes[0]["routes"][0]["geometry"])
     outbound_shape = polyline.decode(routes[1]["routes"][0]["geometry"])
