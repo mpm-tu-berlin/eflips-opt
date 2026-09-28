@@ -40,7 +40,6 @@ from eflips.opt.util import (
     calculate_deadhead_costs,
 )
 
-
 LatLon = Tuple[float, float]
 
 
