@@ -1,7 +1,7 @@
 repos:
   # Black code formatter
   - repo: https://github.com/psf/black
-    rev: 24.2.0
+    rev: 26.5.1
     hooks:
       - id: black
         # It is recommended to specify the latest version of Python

@@ -113,7 +113,7 @@ def _subgraph_to_dict(
 
 
 def _sort_graph_json(
-    graph_json: List[Dict[str, List[Dict[str, int | Tuple[int | float | None, ...]]]]]
+    graph_json: List[Dict[str, List[Dict[str, int | Tuple[int | float | None, ...]]]]],
 ) -> List[Dict[str, List[Dict[str, int | Tuple[int | float | None, ...]]]]]:
     """
     For repeatability, sort the graph JSON

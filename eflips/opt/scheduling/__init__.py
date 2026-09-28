@@ -11,7 +11,6 @@ energy at the station.
 
 """
 
-
 import itertools
 import json
 import os

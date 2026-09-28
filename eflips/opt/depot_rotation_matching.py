@@ -5,8 +5,8 @@ import os
 import warnings
 from datetime import timedelta
 from numbers import Number
-from typing import Dict, List, Tuple, Iterable
-from eflips.model.util import geometry_has_z, get_altitude
+from typing import Any, Dict, List, Mapping, Tuple, Iterable
+from eflips.model.util import geometry_has_z, get_altitudes
 import openrouteservice  # type: ignore
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
@@ -39,6 +39,34 @@ from eflips.opt.util import (
     get_depot_rot_assign,
     calculate_deadhead_costs,
 )
+
+LatLon = Tuple[float, float]
+
+
+def _route_cost_for(
+    cost: pd.DataFrame, rotation_id: int, depot_id: int
+) -> Dict[str, Any]:
+    """The cached deadhead cost row (distance, duration, geometry) for one rotation/depot pair."""
+    route_cost = cost.loc[
+        (cost["rotation_id"] == rotation_id) & (cost["depot_id"] == depot_id)
+    ]["cost"].iloc[0]
+    assert isinstance(route_cost, dict)
+    return route_cost
+
+
+def _line_with_altitudes(
+    line: LineString, altitude_by_latlon: Mapping[LatLon, float]
+) -> LineString:
+    """
+    Add a Z coordinate to every vertex of a 2D line.
+
+    :param line: a line with ``(lon, lat)`` vertices
+    :param altitude_by_latlon: altitudes keyed by ``(lat, lon)``, as :func:`get_altitudes` takes them
+    :return: the same line with ``(lon, lat, altitude)`` vertices
+    """
+    return LineString(
+        [(lon, lat, altitude_by_latlon[(lat, lon)]) for lon, lat in line.coords]
+    )
 
 
 class DepotRotationOptimizer:
@@ -488,6 +516,36 @@ class DepotRotationOptimizer:
 
         self.data["result"] = new_assign
 
+    @staticmethod
+    def _collect_altitudes(
+        depot_from_user: List[Dict[str, Any]],
+        new_assign: pd.DataFrame,
+        cost: pd.DataFrame,
+    ) -> Dict[LatLon, float]:
+        """
+        Look up every altitude that :meth:`write_optimization_results` will need in one batch.
+
+        That is the coordinates of all depots that are given as ``(lon, lat)`` tuples and every
+        vertex of the ferry and return route shapes of all assigned rotations. The Google
+        Elevation API is billed per request (of up to 512 points), so this is done once up front
+        rather than per vertex while writing.
+
+        :return: altitudes keyed by ``(lat, lon)``; empty if the geometry types carry no Z
+        """
+        if not geometry_has_z():
+            return {}
+        latlons: List[LatLon] = []
+        for depot in depot_from_user:
+            if isinstance(depot["depot_station"], tuple):
+                # depot_station is (lon, lat); get_altitudes expects (lat, lon).
+                latlons.append((depot["depot_station"][1], depot["depot_station"][0]))
+        for row in new_assign.itertuples():
+            route_cost = _route_cost_for(cost, row.rotation_id, row.new_depot_id)  # type: ignore[arg-type]
+            for line in route_cost["geometry"]:
+                latlons.extend((lat, lon) for lon, lat in line.coords)
+        unique = list(dict.fromkeys(latlons))
+        return dict(zip(unique, get_altitudes(unique)))
+
     def write_optimization_results(self, delete_original_data: bool = False) -> None:
         logger = logging.getLogger(__name__)
 
@@ -513,9 +571,16 @@ class DepotRotationOptimizer:
         ).delete()
         self.session.flush()
 
-        # Write new depot as stations
         depot_from_user = self.data["depot_from_user"]
         assert isinstance(depot_from_user, list), "Depot data should be a list"
+        new_assign = self.data["result"]
+        assert isinstance(new_assign, pd.DataFrame), "Result data should be a DataFrame"
+        cost = self.data["cost"]
+        assert isinstance(cost, pd.DataFrame), "Cost data should be a DataFrame"
+
+        altitude_by_latlon = self._collect_altitudes(depot_from_user, new_assign, cost)
+
+        # Write new depot as stations
         for depot in depot_from_user:
             if isinstance(depot["depot_station"], tuple):
                 # It is a tuple of 2 floats, where we should create a new depot, if one does not already exist
@@ -530,10 +595,10 @@ class DepotRotationOptimizer:
                         srid=4326,
                     )
                     if geometry_has_z():
-                        # depot_station is (lon, lat); get_altitude expects (lat, lon).
-                        altitude = get_altitude(
+                        # depot_station is (lon, lat); the altitudes are keyed by (lat, lon).
+                        altitude = altitude_by_latlon[
                             (depot["depot_station"][1], depot["depot_station"][0])
-                        )
+                        ]
                         geom = from_shape(
                             Point(
                                 depot["depot_station"][0],
@@ -556,10 +621,6 @@ class DepotRotationOptimizer:
                     )
         self.session.flush()
 
-        new_assign = self.data["result"]
-        cost = self.data["cost"]
-
-        assert isinstance(new_assign, pd.DataFrame), "Result data should be a DataFrame"
         for row in new_assign.itertuples():
 
             # Add depot if it is a new depot, else get the depot station id
@@ -582,11 +643,7 @@ class DepotRotationOptimizer:
                 assert depot_station is not None, "Depot station not found"
                 depot_name = depot_station.name  # type: ignore
 
-            assert isinstance(cost, pd.DataFrame), "Cost data should be a DataFrame"
-            route_cost = cost.loc[
-                (cost["rotation_id"] == row.rotation_id)
-                & (cost["depot_id"] == row.new_depot_id)
-            ]["cost"].iloc[0]
+            route_cost = _route_cost_for(cost, row.rotation_id, row.new_depot_id)  # type: ignore[arg-type]
             ferry_route_distance = route_cost["distance"][0]
             return_route_distance = route_cost["distance"][1]
             ferry_route_duration = route_cost["duration"][0]
@@ -600,24 +657,13 @@ class DepotRotationOptimizer:
             return_route_shape_2d = from_shape(route_cost["geometry"][1], srid=4326)
 
             if geometry_has_z():
-                # Shapely coords are (lon, lat); get_altitude expects (lat, lon).
-                ferry_route_points_with_alt = []
-                return_route_points_with_alt = []
-                for coord in list(route_cost["geometry"][0].coords):
-                    altitude = get_altitude((coord[1], coord[0]))
-                    ferry_route_points_with_alt.append(
-                        Point(coord[0], coord[1], altitude)
-                    )
-                for coord in list(route_cost["geometry"][1].coords):
-                    altitude = get_altitude((coord[1], coord[0]))
-                    return_route_points_with_alt.append(
-                        Point(coord[0], coord[1], altitude)
-                    )
                 ferry_route_shape = from_shape(
-                    LineString(ferry_route_points_with_alt), srid=4326
+                    _line_with_altitudes(route_cost["geometry"][0], altitude_by_latlon),
+                    srid=4326,
                 )
                 return_route_shape = from_shape(
-                    LineString(return_route_points_with_alt), srid=4326
+                    _line_with_altitudes(route_cost["geometry"][1], altitude_by_latlon),
+                    srid=4326,
                 )
             else:
                 ferry_route_shape = ferry_route_shape_2d

@@ -62,6 +62,8 @@ jobs:
           PYTHONPATH: "tests:."
           # Replace with your own database info
           DATABASE_URL: postgresql://user:password@localhost/database
+          # Never look altitudes up over the network in CI
+          ELEVATION_DUMMY_MODE: "True"
           # The hostname used to communicate with the PostgreSQL service container
           POSTGRES_HOST: localhost
           # The default PostgreSQL port
