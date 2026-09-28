@@ -31,10 +31,105 @@ from sqlalchemy import create_engine
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from eflips.opt.depot_rotation_matching import DepotRotationOptimizer
+import pandas as pd
+from shapely import LineString
+
+from eflips.opt.depot_rotation_matching import (
+    DepotRotationOptimizer,
+    _line_with_altitudes,
+)
+
+
+class TestAltitudeBatching:
+    """DB-free tests for the altitude pre-pass of write_optimization_results."""
+
+    def test_line_with_altitudes_keys_by_lat_lon(self):
+        line = LineString([(13.0, 52.0), (13.1, 52.1)])
+        altitudes = {(52.0, 13.0): 30.0, (52.1, 13.1): 35.5}
+        result = _line_with_altitudes(line, altitudes)
+        assert result.has_z
+        assert list(result.coords) == [(13.0, 52.0, 30.0), (13.1, 52.1, 35.5)]
+
+    def test_collect_altitudes_makes_one_deduplicated_call(self, monkeypatch):
+        calls = []
+
+        def fake_get_altitudes(latlons):
+            calls.append(list(latlons))
+            return [float(index) for index in range(len(latlons))]
+
+        monkeypatch.delenv("ELEVATION_DUMMY_MODE", raising=False)
+        monkeypatch.setattr(
+            "eflips.opt.depot_rotation_matching.get_altitudes", fake_get_altitudes
+        )
+
+        ferry = LineString([(13.0, 52.0), (13.1, 52.1)])
+        return_ = LineString(
+            [(13.1, 52.1), (13.0, 52.0)]
+        )  # shares both vertices with ferry
+        other = LineString([(13.2, 52.2), (13.3, 52.3)])
+        depot_from_user = [
+            {
+                "name": "New depot",
+                "depot_station": (13.5, 52.5),
+            },  # (lon, lat) tuple → new Station
+            {
+                "name": "Existing depot",
+                "depot_station": 42,
+            },  # station id → nothing to look up
+        ]
+        new_assign = pd.DataFrame({"rotation_id": [1, 2], "new_depot_id": [0, 0]})
+        cost = pd.DataFrame(
+            {
+                "rotation_id": [1, 2],
+                "depot_id": [0, 0],
+                "cost": [
+                    {
+                        "distance": (1, 1),
+                        "duration": (1, 1),
+                        "geometry": (ferry, return_),
+                    },
+                    {
+                        "distance": (1, 1),
+                        "duration": (1, 1),
+                        "geometry": (ferry, other),
+                    },
+                ],
+            }
+        )
+
+        result = DepotRotationOptimizer._collect_altitudes(
+            depot_from_user, new_assign, cost
+        )
+
+        assert len(calls) == 1
+        expected = [
+            (52.5, 13.5),
+            (52.0, 13.0),
+            (52.1, 13.1),
+            (52.2, 13.2),
+            (52.3, 13.3),
+        ]
+        assert calls[0] == expected
+        assert result == {latlon: float(index) for index, latlon in enumerate(expected)}
+        assert _line_with_altitudes(ferry, result).coords[0] == (13.0, 52.0, 1.0)
+
+    def test_collect_altitudes_dummy_mode(self, monkeypatch):
+        monkeypatch.setenv("ELEVATION_DUMMY_MODE", "True")
+        new_assign = pd.DataFrame({"rotation_id": [1], "new_depot_id": [0]})
+        line = LineString([(13.0, 52.0), (13.1, 52.1)])
+        cost = pd.DataFrame(
+            {"rotation_id": [1], "depot_id": [0], "cost": [{"geometry": (line, line)}]}
+        )
+        result = DepotRotationOptimizer._collect_altitudes([], new_assign, cost)
+        assert result == {(52.0, 13.0): 9999.0, (52.1, 13.1): 9999.0}
 
 
 class TestHelpers:
+    @pytest.fixture(autouse=True)
+    def disable_altitude_lookups(self, monkeypatch) -> None:
+        """Bypass network altitude lookups for all tests in this class."""
+        monkeypatch.setenv("ELEVATION_DUMMY_MODE", "True")
+
     @pytest.fixture()
     def scenario(self, session):
         """
@@ -71,7 +166,7 @@ class TestHelpers:
         )
         session.add(vehicle_type)
         battery_type = BatteryType(
-            scenario=scenario, specific_mass=100, chemistry={"test": "test"}
+            scenario=scenario, specific_mass=100, chemistry="test"
         )
         session.add(battery_type)
         vehicle_type.battery_type = battery_type
