@@ -697,162 +697,174 @@ class DepotRotationOptimizer:
             )
             first_trip = trips[0]
 
-            # Ferry-route
-            ferry_route = (
-                self.session.query(Route)
-                .filter(
-                    Route.departure_station_id == depot_station.id,
-                    Route.arrival_station_id == first_trip.route.departure_station_id,
+            # A rotation whose first trip already starts at the depot station
+            # needs no ferry trip. Creating one would give a route of length zero.
+            if first_trip.route.departure_station_id != depot_station.id:
+                # Ferry-route
+                ferry_route = (
+                    self.session.query(Route)
+                    .filter(
+                        Route.departure_station_id == depot_station.id,
+                        Route.arrival_station_id
+                        == first_trip.route.departure_station_id,
+                    )
+                    .all()
                 )
-                .all()
-            )
-            if len(ferry_route) == 0:
-                # There is no such route, create a new one
-                new_ferry_route = Route(
-                    departure_station=depot_station,
-                    arrival_station=first_trip.route.departure_station,
-                    line_id=first_trip.route.line_id,
+                if len(ferry_route) == 0:
+                    # There is no such route, create a new one
+                    new_ferry_route = Route(
+                        departure_station=depot_station,
+                        arrival_station=first_trip.route.departure_station,
+                        line_id=first_trip.route.line_id,
+                        scenario_id=self.scenario_id,
+                        distance=ferry_route_distance_from_shape,
+                        name="Einsetzfahrt "
+                        + str(depot_name)
+                        + " "
+                        + str(first_trip.route.departure_station.name),
+                        geom=ferry_route_shape,
+                    )
+
+                    assoc_ferry_station = [
+                        AssocRouteStation(
+                            scenario_id=self.scenario_id,
+                            station=depot_station,
+                            route=new_ferry_route,
+                            elapsed_distance=0,
+                        ),
+                        AssocRouteStation(
+                            scenario_id=self.scenario_id,
+                            station=first_trip.route.departure_station,
+                            route=new_ferry_route,
+                            elapsed_distance=(ferry_route_distance_from_shape),
+                        ),
+                    ]
+                    new_ferry_route.assoc_route_stations = assoc_ferry_station
+                    self.session.add(new_ferry_route)
+
+                else:
+                    # There is such a route
+                    new_ferry_route = ferry_route[0]
+
+                # Add ferry trip
+                new_ferry_trip = Trip(
                     scenario_id=self.scenario_id,
-                    distance=ferry_route_distance_from_shape,
-                    name="Einsetzfahrt "
-                    + str(depot_name)
-                    + " "
-                    + str(first_trip.route.departure_station.name),
-                    geom=ferry_route_shape,
+                    route=new_ferry_route,
+                    rotation_id=row.rotation_id,
+                    trip_type=TripType.EMPTY,
+                    departure_time=first_trip.departure_time
+                    - timedelta(
+                        seconds=(
+                            ferry_route_duration if ferry_route_duration > 60 else 60
+                        )
+                    ),  #
+                    # minimum duration is 60s
+                    arrival_time=first_trip.departure_time,
                 )
 
-                assoc_ferry_station = [
-                    AssocRouteStation(
+                # Add stop times
+                ferry_stop_times = [
+                    StopTime(
                         scenario_id=self.scenario_id,
+                        trip=new_ferry_trip,
                         station=depot_station,
-                        route=new_ferry_route,
-                        elapsed_distance=0,
+                        arrival_time=new_ferry_trip.departure_time,
+                        dwell_duration=timedelta(seconds=0),
                     ),
-                    AssocRouteStation(
+                    StopTime(
                         scenario_id=self.scenario_id,
+                        trip=new_ferry_trip,
                         station=first_trip.route.departure_station,
-                        route=new_ferry_route,
-                        elapsed_distance=(ferry_route_distance_from_shape),
+                        arrival_time=new_ferry_trip.arrival_time,
+                        dwell_duration=timedelta(seconds=0),
                     ),
                 ]
-                new_ferry_route.assoc_route_stations = assoc_ferry_station
-                self.session.add(new_ferry_route)
-
-            else:
-                # There is such a route
-                new_ferry_route = ferry_route[0]
-
-            # Add ferry trip
-            new_ferry_trip = Trip(
-                scenario_id=self.scenario_id,
-                route=new_ferry_route,
-                rotation_id=row.rotation_id,
-                trip_type=TripType.EMPTY,
-                departure_time=first_trip.departure_time
-                - timedelta(
-                    seconds=ferry_route_duration if ferry_route_duration > 60 else 60
-                ),  #
-                # minimum duration is 60s
-                arrival_time=first_trip.departure_time,
-            )
-
-            # Add stop times
-            ferry_stop_times = [
-                StopTime(
-                    scenario_id=self.scenario_id,
-                    trip=new_ferry_trip,
-                    station=depot_station,
-                    arrival_time=new_ferry_trip.departure_time,
-                    dwell_duration=timedelta(seconds=0),
-                ),
-                StopTime(
-                    scenario_id=self.scenario_id,
-                    trip=new_ferry_trip,
-                    station=first_trip.route.departure_station,
-                    arrival_time=new_ferry_trip.arrival_time,
-                    dwell_duration=timedelta(seconds=0),
-                ),
-            ]
-            self.session.add_all(ferry_stop_times)
-            new_ferry_trip.stop_times = ferry_stop_times
-            self.session.add(new_ferry_trip)
+                self.session.add_all(ferry_stop_times)
+                new_ferry_trip.stop_times = ferry_stop_times
+                self.session.add(new_ferry_trip)
 
             # Return-route
             last_trip = trips[-1]
-            return_route = (
-                self.session.query(Route)
-                .filter(
-                    Route.departure_station_id == last_trip.route.arrival_station_id,
-                    Route.arrival_station_id == depot_station.id,
+            # A rotation whose last trip already ends at the depot station needs
+            # no return trip. Creating one would give a route of length zero.
+            if last_trip.route.arrival_station_id != depot_station.id:
+                return_route = (
+                    self.session.query(Route)
+                    .filter(
+                        Route.departure_station_id
+                        == last_trip.route.arrival_station_id,
+                        Route.arrival_station_id == depot_station.id,
+                    )
+                    .all()
                 )
-                .all()
-            )
-            if len(return_route) == 0:
-                new_return_route = Route(
-                    departure_station=last_trip.route.arrival_station,
-                    arrival_station=depot_station,
-                    line_id=first_trip.route.line_id,
+                if len(return_route) == 0:
+                    new_return_route = Route(
+                        departure_station=last_trip.route.arrival_station,
+                        arrival_station=depot_station,
+                        line_id=first_trip.route.line_id,
+                        scenario_id=self.scenario_id,
+                        distance=return_route_distance_from_shape,
+                        name="Aussetzfahrt "
+                        + str(last_trip.route.arrival_station.name)
+                        + " "
+                        + str(depot_name),
+                        geom=return_route_shape,
+                    )
+                    assoc_return_station = [
+                        AssocRouteStation(
+                            scenario_id=self.scenario_id,
+                            station=depot_station,
+                            route=new_return_route,
+                            elapsed_distance=(return_route_distance_from_shape),
+                        ),
+                        AssocRouteStation(
+                            scenario_id=self.scenario_id,
+                            station=last_trip.route.arrival_station,
+                            route=new_return_route,
+                            elapsed_distance=0,
+                        ),
+                    ]
+                    new_return_route.assoc_route_stations = assoc_return_station
+                    self.session.add(new_return_route)
+
+                else:
+                    new_return_route = return_route[0]
+
+                # Add return trip
+                new_return_trip = Trip(
                     scenario_id=self.scenario_id,
-                    distance=return_route_distance_from_shape,
-                    name="Aussetzfahrt "
-                    + str(last_trip.route.arrival_station.name)
-                    + " "
-                    + str(depot_name),
-                    geom=return_route_shape,
-                )
-                assoc_return_station = [
-                    AssocRouteStation(
-                        scenario_id=self.scenario_id,
-                        station=depot_station,
-                        route=new_return_route,
-                        elapsed_distance=(return_route_distance_from_shape),
+                    route=new_return_route,
+                    rotation_id=row.rotation_id,
+                    trip_type=TripType.EMPTY,
+                    departure_time=last_trip.arrival_time,
+                    arrival_time=last_trip.arrival_time
+                    + timedelta(
+                        seconds=(
+                            return_route_duration if return_route_duration > 60 else 60
+                        )
                     ),
-                    AssocRouteStation(
+                )
+
+                # Add stop times
+                return_stop_times = [
+                    StopTime(
                         scenario_id=self.scenario_id,
+                        trip=new_return_trip,
+                        station=depot_station,
+                        arrival_time=new_return_trip.arrival_time,
+                        dwell_duration=timedelta(seconds=0),
+                    ),
+                    StopTime(
+                        scenario_id=self.scenario_id,
+                        trip=new_return_trip,
                         station=last_trip.route.arrival_station,
-                        route=new_return_route,
-                        elapsed_distance=0,
+                        arrival_time=new_return_trip.departure_time,
+                        dwell_duration=timedelta(seconds=0),
                     ),
                 ]
-                new_return_route.assoc_route_stations = assoc_return_station
-                self.session.add(new_return_route)
-
-            else:
-                new_return_route = return_route[0]
-
-            # Add return trip
-            new_return_trip = Trip(
-                scenario_id=self.scenario_id,
-                route=new_return_route,
-                rotation_id=row.rotation_id,
-                trip_type=TripType.EMPTY,
-                departure_time=last_trip.arrival_time,
-                arrival_time=last_trip.arrival_time
-                + timedelta(
-                    seconds=return_route_duration if return_route_duration > 60 else 60
-                ),
-            )
-
-            # Add stop times
-            return_stop_times = [
-                StopTime(
-                    scenario_id=self.scenario_id,
-                    trip=new_return_trip,
-                    station=depot_station,
-                    arrival_time=new_return_trip.arrival_time,
-                    dwell_duration=timedelta(seconds=0),
-                ),
-                StopTime(
-                    scenario_id=self.scenario_id,
-                    trip=new_return_trip,
-                    station=last_trip.route.arrival_station,
-                    arrival_time=new_return_trip.departure_time,
-                    dwell_duration=timedelta(seconds=0),
-                ),
-            ]
-            self.session.add_all(return_stop_times)
-            new_return_trip.stop_times = return_stop_times
-            self.session.add(new_return_trip)
+                self.session.add_all(return_stop_times)
+                new_return_trip.stop_times = return_stop_times
+                self.session.add(new_return_trip)
 
         # Update station electrification based on rotation assignments
         # Collect all depot station IDs that received rotations
