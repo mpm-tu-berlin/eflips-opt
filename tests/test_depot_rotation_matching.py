@@ -640,6 +640,49 @@ class TestDepotRotationOptimizer(TestHelpers):
         "BASE_URL" not in os.environ,
         reason="Needs OpenRouteService API access (set BASE_URL in env variables)",
     )
+    def test_optimize_rotations_at_depot_station(
+        self, session, full_scenario, optimizer
+    ):
+        # Once the original empty trips are deleted, every rotation starts and
+        # ends at "Adenauer Platz". A depot at that station must not get
+        # zero-length ferry or return routes.
+        depot_station = (
+            session.query(Station)
+            .filter(
+                Station.scenario_id == full_scenario.id,
+                Station.name_short == "AP",
+            )
+            .one()
+        )
+        user_input_depot = [
+            {"depot_station": depot_station.id, "capacity": 10, "vehicle_type": [1, 2]},
+        ]
+
+        optimizer.get_depot_from_input(user_input_depot)
+        optimizer.data_preparation()
+        optimizer.optimize()
+        optimizer.write_optimization_results(delete_original_data=True)
+        session.commit()
+
+        assert (
+            session.query(Route)
+            .filter(Route.departure_station_id == Route.arrival_station_id)
+            .count()
+            == 0
+        )
+        assert (
+            session.query(Trip)
+            .filter(
+                Trip.scenario_id == full_scenario.id, Trip.trip_type == TripType.EMPTY
+            )
+            .count()
+            == 0
+        )
+
+    @pytest.mark.skipif(
+        "BASE_URL" not in os.environ,
+        reason="Needs OpenRouteService API access (set BASE_URL in env variables)",
+    )
     def test_optimize_with_infeasible_model(self, session, full_scenario, optimizer):
         user_input_depot = [
             {"depot_station": 1, "capacity": 1, "vehicle_type": [1]},
