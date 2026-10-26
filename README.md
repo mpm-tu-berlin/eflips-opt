@@ -19,7 +19,7 @@ This repository contains code for optimizing (electric) bus networks. The follow
     ```
 
 2. Install the packages listed in `poetry.lock` and `pyproject.toml` into your Python environment. Notes:
-    - Python 3.10 to 3.13 is supported.
+    - Python 3.11 to 3.15 is supported.
     - Using the [poetry](https://python-poetry.org/) package manager is recommended. It can be installed according to the
       instructions listed [here](https://python-poetry.org/docs/#installing-with-the-official-installer).
 
