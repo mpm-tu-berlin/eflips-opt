@@ -9,8 +9,8 @@ Part of the [eFLIPS/simBA](https://github.com/stars/ludgerheide/lists/ebus2030) 
 This repository contains code for optimizing (electric) bus networks. The following optimization problems are considered:
 
 - [Depot-Rotation Matching](#depot-rotation-matching): Given a set of depots and a set of rotations, find the optimal assignment of rotations to depots.
-- [Simplified Electric Vehicle Scheduling Problem](#simplified-electric-vehicle-scheduling-problem): Given a set of trips, find the rotation of electric buses that minimizes the total number of vehicles needed to serve all trips.
-
+- [Vehicle Scheduling](#vehicle-scheduling): Given a set of trips, find the set of rotations (vehicle blocks) that serves all trips with the minimum number of vehicles, optionally respecting battery and duration limits.
+- Smart Charging (`eflips.opt.smart_charging`): After a simulation, smooth the depot charging events to reduce peak power.
 
 ## Installation
 1. Clone the repository
@@ -19,12 +19,12 @@ This repository contains code for optimizing (electric) bus networks. The follow
     ```
 
 2. Install the packages listed in `poetry.lock` and `pyproject.toml` into your Python environment. Notes:
-    - The suggested Python version is 3.11.*, it may work with other versions, but this is not tested.
+    - Python 3.10 to 3.13 is supported.
     - Using the [poetry](https://python-poetry.org/) package manager is recommended. It can be installed according to the
       instructions listed [here](https://python-poetry.org/docs/#installing-with-the-official-installer).
 
-3. In order to use the [Depot-Rotation Matching](#depot-rotation-matching), it is recommended to install the 
-4. [Gurobi](https://www.gurobi.com/) solver. The solver can be installed by following the instructions listed [here](https://support.gurobi.com/hc/en-us/articles/4534161999889-How-do-I-install-Gurobi-Optimizer). 
+3. In order to use the [Depot-Rotation Matching](#depot-rotation-matching), it is recommended to install the
+   [Gurobi](https://www.gurobi.com/) solver. The solver can be installed by following the instructions listed [here](https://support.gurobi.com/hc/en-us/articles/4534161999889-How-do-I-install-Gurobi-Optimizer). 
    The solver can be used with a license for academic purposes. If you do not have a license, you can request one [here](https://www.gurobi.com/academia/academic-program-and-licenses/).
 
 ## Usage
@@ -60,52 +60,39 @@ optimizer.optimize(time_report=True)
 optimizer.write_optimization_results(delete_original_data=True)
 ```
 
-## Simplified Electric Vehicle Scheduling Problem
+### Vehicle Scheduling
 
----
-
-This section is not current, it will be updated soon.
-
----
-
-Example scripts for the Simplified Electric Vehicle Scheduling Problem can be found in the
-`examples/simplified_electric_vehicle_scheduling_problem` directory. It creates a graph of all possible trips and
-their possible connections. The minimum number of rotations is now a 
-[minimum path cover](https://en.wikipedia.org/wiki/Path_cover) of the graph. This is what the 
-`minimum_path_cover_rotation_plan()` function does. Its result however tries to make rotations as long as possible,
-ignoring the fact that the bus might need to be recharged (this is useful for identifying terminus stations to 
-electrify though. 
-
-In order to find a rotation plan that considers the battery state of the bus, the `soc_aware_rotation_plan()` function
-can be used. It iterates over the solution of the `minimum_path_cover_rotation_plan()` function and heuristically finds
-a good rotation plan that considers the battery state of the bus.
-
-### Known issues
-
-- The result is not optimal in terms of minimum waiting time at each terminus. This could be improved by fine-tuning
-the candidate selection process in the `create_graph_of_possible_connections()` function.
-- The result is not stable, changing with each new python process. This is due to there being multiple minimum path c
-covers of the graph. This could possibly be fixed by iterating over all minimum path covers and selecting the one that
-minimizes the dwell durations or the energy consumption of each bus. [See here for a possible implementation (but be careful of the combination explosion)](https://github.com/Xunius/bipartite_matching)
-
-### Usage
+The scheduling problem is formulated as a directed acyclic graph: nodes are trips, edges are feasible connections
+between trips, weighted by the waiting time. The minimum number of rotations is a
+[minimum path cover](https://en.wikipedia.org/wiki/Path_cover) of this graph, which is computed by the Rust solver
+[eflips-schedule-rust](https://pypi.org/project/eflips-schedule-rust/). Per-trip weights (e.g. the state-of-charge
+used by each trip) let the solver keep each rotation within the battery capacity and a maximum duration.
 
 ```python
-# You probably want to create one schedule for each vehicle type, e.g. not connect 12m buses' trips with 18m buses' trips
+from datetime import timedelta
+from eflips.opt.scheduling import (
+    passenger_trips_by_vehicle_type,
+    create_graph,
+    solve,
+    write_back_rotation_plan,
+)
+
+# Create one schedule per vehicle type, so trips of e.g. 12m and 18m buses are not mixed
 trips_by_vt = passenger_trips_by_vehicle_type(scenario, session)
 for vehicle_type, trips in trips_by_vt.items():
-   # The connection graph is what the schedule will be based on
-   graph = create_graph_of_possible_connections(trips)
-   
-   # The minimum path cover rotation plan just makes rotations as long as possible
-   rotation_graph = minimum_path_cover_rotation_plan(graph)
-   
-   # The soc aware rotation plan tries to make rotations that consider the battery state of the bus
-   soc_aware_graph = soc_aware_rotation_plan(graph, soc_reserve=SOC_RESERVE)
-   
-   # The rotation plan can be visualized
-   visualize_with_dash_cytoscape(soc_aware_graph)
- ```
+    if not trips:
+        continue
+    # delta_socs: optional {trip_id: fraction of the battery used by the trip}
+    graph = create_graph(trips, maximum_schedule_duration=timedelta(hours=24))
+    rotation_graph = solve(graph, maximum_schedule_duration=timedelta(hours=24))
+
+    # Replace the scenario's original rotations with the new ones
+    write_back_rotation_plan(rotation_graph, session)
+session.commit()
+```
+
+`create_graph()` has further parameters for break times and for preferring connections on the same line.
+`visualize_with_dash_cytoscape(graph)` shows a graph in the browser.
 
 ## Development
 
@@ -119,9 +106,19 @@ use other methods to format the code, but please ensure that the code is formatt
 
 Please make sure that your `poetry.lock` and `pyproject.toml` files are consistent before committing. You can use `poetry check` to check this. This is also checked by pre-commit.
 
+Each pull request must increase the version number in `pyproject.toml` (CI checks it against PyPI), following
+[Semantic Versioning](https://semver.org/): patch for changes without API changes, minor for backwards-compatible
+API changes such as new features, major for breaking changes. Every merge to `main` is published to PyPI.
+
+Tests need a PostgreSQL/PostGIS database, given in `DATABASE_URL`. **All data in it is deleted.**
+
+```bash
+DATABASE_URL=postgresql://user:password@localhost/database PYTHONPATH=tests:. poetry run pytest
+```
+
 ## License
 
-This project is licensed under the AGPLv3 license - see the [LICENSE](LICENSE.md) file for details.
+This project is licensed under the AGPLv3 license - see the [LICENSE](LICENSE) file for details.
 
 ## Funding Notice
 
