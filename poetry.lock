@@ -540,7 +540,7 @@ description = "Lightweight in-process concurrent programming"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "python_version < \"3.14\" and (platform_machine == \"aarch64\" or platform_machine == \"ppc64le\" or platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"AMD64\" or platform_machine == \"win32\" or platform_machine == \"WIN32\")"
+markers = "(platform_machine == \"aarch64\" or platform_machine == \"ppc64le\" or platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"AMD64\" or platform_machine == \"win32\" or platform_machine == \"WIN32\") and python_version < \"3.14\""
 files = [
     {file = "greenlet-3.1.1-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:0bbae94a29c9e5c7e4a2b7f0aae5c17e8e90acbfd3bf6270eeba60c39fce3563"},
     {file = "greenlet-3.1.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0fde093fb93f35ca72a556cf72c92ea3ebfda3d79fc35bb19fbe685853869a83"},
@@ -628,6 +628,7 @@ description = "Python interface to Gurobi"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "python_version < \"3.14\""
 files = [
     {file = "gurobipy-12.0.3-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:83882c4552e2b2f1bd70623b9822d307bd5119154d3d9ff5a0071a681c9a29a5"},
     {file = "gurobipy-12.0.3-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:1e6881e29f870f639bd005b53c217a58a8ad1f54c94d8f14269002654de515fa"},
@@ -649,6 +650,44 @@ files = [
     {file = "gurobipy-12.0.3-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:76224c12c8ce7cc1b3221ad9da392ccd955edd8d83becd6e41bd883cb235a94c"},
     {file = "gurobipy-12.0.3-cp39-cp39-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:940e21dfcb82fbbadeba893f4d01d3348f0d595692fac56f4e28a4199f541b18"},
     {file = "gurobipy-12.0.3-cp39-cp39-win_amd64.whl", hash = "sha256:af87114a6125a1e5171db5c61867f33c4a41605548de8766b3cbfa5aa2c6de05"},
+]
+
+[package.extras]
+matrixapi = ["numpy", "scipy"]
+
+[[package]]
+name = "gurobipy"
+version = "13.0.3"
+description = "Python interface to Gurobi"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "python_version == \"3.14\""
+files = [
+    {file = "gurobipy-13.0.3-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:fd5189bd3507fe546323f3dafa0d000e3691288a9ad8bb7e2f74eed7e4af1f8c"},
+    {file = "gurobipy-13.0.3-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:a3ed4b02d1412f94b579f329bacb8c9de31bfeb74c3b487c29ac75c0977aee2b"},
+    {file = "gurobipy-13.0.3-cp310-cp310-manylinux_2_26_aarch64.whl", hash = "sha256:908ef711983a6df6f04b769b687e72e8f42f9e033e606216262072d731c972bf"},
+    {file = "gurobipy-13.0.3-cp310-cp310-win_amd64.whl", hash = "sha256:92658ce26fe22d2aafa98bc67652c1b52cabd90f83502b7f234c48c5b7761ae3"},
+    {file = "gurobipy-13.0.3-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:ce2dd649e6859eeee350d2c22120f2180799696eba3cdf6b2810f6a695d2761c"},
+    {file = "gurobipy-13.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:8ce3da52cceaa06eee4d4bbe02db873076aa731fc6a66b59d92446be704921b5"},
+    {file = "gurobipy-13.0.3-cp311-cp311-manylinux_2_26_aarch64.whl", hash = "sha256:2f82af72e5eaf4bdce0162a05ca8c5a57a49f6dc9e3fcf79329dd8e4f79bf43c"},
+    {file = "gurobipy-13.0.3-cp311-cp311-win_amd64.whl", hash = "sha256:5a13eec9f02ca3ba54e59ea3802f93bfc596c402a0a7ecb2396cfadecb17c82c"},
+    {file = "gurobipy-13.0.3-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:ee439774ed56dca173cddf0017f1cb854d7f79dfcc12abc4fe5d83a7f22bb9b3"},
+    {file = "gurobipy-13.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:34f0b9528edfbf29e96a74e0b69b8cc832375d43342d6376754fd436c570bb2a"},
+    {file = "gurobipy-13.0.3-cp312-cp312-manylinux_2_26_aarch64.whl", hash = "sha256:3d4611c247850379e416daafd9a7ad624d94e7b2b416746c382a3a54c1ef89d7"},
+    {file = "gurobipy-13.0.3-cp312-cp312-win_amd64.whl", hash = "sha256:11ae3f75a17265e095695229a3ccbf14a8fe6fa9a4bc17a11e2698bedc16b28a"},
+    {file = "gurobipy-13.0.3-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:65ca7a0cd1e5ed57c80e613f35509c0aeaac1544d17705b73f9a5707d40e2588"},
+    {file = "gurobipy-13.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:d54ea7f41dff3518020c1a6240fa3ef8f8ae3077040b4e1e445fe69a239e98ca"},
+    {file = "gurobipy-13.0.3-cp313-cp313-manylinux_2_26_aarch64.whl", hash = "sha256:3a7c8cf118f2381ec9f80f1990d532ead67d61f5bbc0be4f977fe9eb0cd6fc41"},
+    {file = "gurobipy-13.0.3-cp313-cp313-win_amd64.whl", hash = "sha256:ab051b7783642c74e49821c3348e8803aa32ca6d1b29f4adcc699bfc67b0f92e"},
+    {file = "gurobipy-13.0.3-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:46d572e1ef5e39dacfbba263a933cbe12ffa7568105b3e43ed8135347d86622e"},
+    {file = "gurobipy-13.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:c2e87d9fb5297fa260a62666a67f29d8be939027905cda353ca1b62047212e88"},
+    {file = "gurobipy-13.0.3-cp314-cp314-manylinux_2_26_aarch64.whl", hash = "sha256:f70a0746a5405f7b0b3b69188a569621c228c90f6dffa26219e47b82dc8f4e89"},
+    {file = "gurobipy-13.0.3-cp314-cp314-win_amd64.whl", hash = "sha256:cfed66d8ca81098bb0671c5ba1b0b3af4cd7b4694e808d0fd3e4d26fdb9c73a6"},
+    {file = "gurobipy-13.0.3-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:6465a921eb81244f48ab12b260c15bed286013ecbcb91ca17c6e4c23eed08834"},
+    {file = "gurobipy-13.0.3-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:b4b5d5ff343e6c8acc36984eb447ee854f293d342dad05efc54aac9e624887b2"},
+    {file = "gurobipy-13.0.3-cp314-cp314t-manylinux_2_26_aarch64.whl", hash = "sha256:8796eb01b354779a75fbf4cdb0c02962f2af176240311c33fb5fe38dd72226e9"},
+    {file = "gurobipy-13.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:ab286f94ef9673cd493b992c504d758ffb5e866f4a706decf47360a543eae720"},
 ]
 
 [package.extras]
@@ -2201,4 +2240,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.16"
-content-hash = "7a84bf0b94b17a6c60abbc13f961ca898db15f42a9255943e3e1bbc665b54815"
+content-hash = "8d72c1b77cb395a6074acac1dc72f051fde7999873d66115710dff018c1c8763"
