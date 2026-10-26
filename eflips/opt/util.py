@@ -10,7 +10,7 @@ from typing import Tuple, List, Dict, Coroutine, Any, Awaitable
 import numpy as np
 import openrouteservice  # type: ignore
 import pandas as pd
-import polyline  # type: ignore
+import polyline
 import sqlalchemy.orm.session
 from eflips.model import (
     Depot,

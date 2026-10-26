@@ -310,7 +310,7 @@ class DepotRotationOptimizer:
         depot_df["depot_id"] = list(range(len(depot_input)))
         depot_df["depot_station"] = station_coords
         depot_df["name"] = names
-        depot_df["capacity"] = capacities
+        depot_df["capacity"] = capacities  # type: ignore[assignment]
         self.data["depot"] = depot_df
 
         # Get original depot rotation assignment
@@ -398,7 +398,7 @@ class DepotRotationOptimizer:
         # Run the async function
         deadhead_costs = asyncio.run(calculate_deadhead_costs(cost_df, client))
 
-        cost_df["cost"] = deadhead_costs
+        cost_df["cost"] = deadhead_costs  # type: ignore[assignment]
         self.data["cost"] = cost_df
 
     def optimize(
