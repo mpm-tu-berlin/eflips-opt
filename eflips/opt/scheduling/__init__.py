@@ -14,6 +14,7 @@ energy at the station.
 import itertools
 import json
 import os
+from dataclasses import dataclass, field
 from datetime import timedelta
 from tempfile import gettempdir
 from typing import Dict, List, Tuple
@@ -37,8 +38,28 @@ from eflips.model import (
 )
 from networkx.classes import Graph  # type: ignore
 from sqlalchemy import func
+from sqlalchemy.orm import object_session
 
-from eflips.opt.scheduling.util import _validate_input_graph, _graph_to_json
+from eflips.opt.scheduling.deadheads import (
+    add_deadhead_trips,
+    assign_delta_socs,
+    discard_deadhead_candidates,
+    materialize_deadhead_candidates,
+)
+from eflips.opt.scheduling.nearby import (
+    DeadheadRoute,
+    DeadheadRouter,
+    NearbyDepartureOptions,
+    nearby_connections,
+    nearby_stations,
+    ors_deadhead_router,
+)
+from eflips.opt.scheduling.util import (
+    _validate_input_graph,
+    _graph_to_json,
+    crosses_service_day,
+)
+from eflips.opt.util import ors_client_from_env
 
 
 def passenger_trips_by_vehicle_type(
@@ -92,6 +113,7 @@ def create_graph(
     longer_break_time_duration: timedelta = timedelta(minutes=5),
     different_line_malus: int = 0,
     do_not_cross_service_day_breaks: bool = False,
+    nearby_departures: NearbyDepartureOptions | None = NearbyDepartureOptions(),
 ) -> nx.Graph:
     """
     Turns a list of trips into a directed acyclic graph. The nodes are the trips, and the edges are the possible
@@ -110,6 +132,15 @@ def create_graph(
     day break.
     :param longer_break_time_trips: A list of trip IDs that require a longer break time.
     :param longer_break_time_duration: The additional break time for trips in longer_break_time_trips.
+    :param nearby_departures: Also connect trips to departures from nearby stops, reached by a deadhead after the
+        break (see :class:`NearbyDepartureOptions` and :func:`eflips.opt.scheduling.nearby.nearby_connections`). Such
+        edges ("blue") carry the deadhead (see :class:`DeadheadRoute`). Their weight is the time between the arrival
+        and the following departure. By default, the deadheads are routed with OpenRouteService, which needs the
+        ``BASE_URL`` environment variable. Set to None to only connect trips at the same stop.
+
+        If the graph has energy consumptions, the consumption of the deadheads must be added before solving: see
+        :mod:`eflips.opt.scheduling.deadheads` (:func:`materialize_deadhead_candidates`, then
+        :func:`assign_delta_socs`).
 
     :return: A directed acyclic graph havong the trips as nodes and the possible connections as edges.
     """
@@ -123,14 +154,20 @@ def create_graph(
         trips_by_departure_station[departure_station].append(trip)
 
     # Sort the lists of trips by departure time
-    for trips in trips_by_departure_station.values():
-        trips.sort(key=lambda trip: trip.departure_time)
+    for trips_at_station in trips_by_departure_station.values():
+        trips_at_station.sort(key=lambda trip: trip.departure_time)
+
+    nearby = (
+        _NearbyDepartures.create(nearby_departures, trips, trips_by_departure_station)
+        if nearby_departures is not None and len(trips) > 0
+        else None
+    )
 
     # Create a graph
     # Set up all the tip endpoints as nodes
     graph = nx.DiGraph()
-    for trips in trips_by_departure_station.values():
-        for trip in trips:
+    for trips_at_station in trips_by_departure_station.values():
+        for trip in trips_at_station:
             # Add the energy consumption and time weight
             if delta_socs is not None:
                 delta_soc = delta_socs[trip.id]
@@ -152,8 +189,8 @@ def create_graph(
             )
 
     # For each trip, find all the possible following trips and add (directed) edges to them
-    for trips in trips_by_departure_station.values():
-        for trip in trips:
+    for trips_at_station in trips_by_departure_station.values():
+        for trip in trips_at_station:
             arrival_station = trip.route.arrival_station
 
             # Determine if this trip's rotation and station require a longer break
@@ -173,22 +210,12 @@ def create_graph(
                         and following_trip.departure_time
                         <= trip.arrival_time + regular_break_time
                     ):
-                        if do_not_cross_service_day_breaks:
-                            # If we are not allowed to cross the service day break, we have to make an additional check:
-                            # What is the date of the start of the following trip's rotation?
-                            # What is the date of the end of the current trip's rotation?
-                            # If they are not the same, we cannot connect the trips
-                            current_trip_rotatiom_start = trip.rotation.trips[
-                                0
-                            ].departure_time.date()
-                            following_trip_rotation_start = (
-                                following_trip.rotation.trips[0].departure_time.date()
-                            )
-                            if (
-                                current_trip_rotatiom_start
-                                != following_trip_rotation_start
-                            ):
-                                continue
+                        # If we are not allowed to cross the service day break, the rotations of both trips must
+                        # start on the same date
+                        if do_not_cross_service_day_breaks and crosses_service_day(
+                            trip, following_trip
+                        ):
+                            continue
 
                         graph.add_edge(
                             trip.id,
@@ -209,24 +236,10 @@ def create_graph(
                             and following_trip.departure_time
                             <= trip.arrival_time + maximum_break_time
                         ):
-                            if do_not_cross_service_day_breaks:
-                                # If we are not allowed to cross the service day break, we have to make an additional check:
-                                # What is the date of the start of the following trip's rotation?
-                                # What is the date of the end of the current trip's rotation?
-                                # If they are not the same, we cannot connect the trips
-                                current_trip_rotatiom_start = trip.rotation.trips[
-                                    0
-                                ].departure_time.date()
-                                following_trip_rotation_start = (
-                                    following_trip.rotation.trips[
-                                        0
-                                    ].departure_time.date()
-                                )
-                                if (
-                                    current_trip_rotatiom_start
-                                    != following_trip_rotation_start
-                                ):
-                                    continue
+                            if do_not_cross_service_day_breaks and crosses_service_day(
+                                trip, following_trip
+                            ):
+                                continue
 
                             graph.add_edge(
                                 trip.id,
@@ -241,7 +254,97 @@ def create_graph(
                             )
                             break
 
+            if nearby is not None:
+                # The shortest wait at the arrival stop, if the trip can be followed there
+                same_stop_waits = [
+                    graph.edges[edge]["weight"] for edge in graph.out_edges(trip.id)
+                ]
+                baseline_wait = (
+                    timedelta(seconds=min(same_stop_waits))
+                    if len(same_stop_waits) > 0
+                    else None
+                )
+                for following_trip, deadhead in nearby_connections(
+                    trip,
+                    nearby.candidates(arrival_station),
+                    baseline_wait=baseline_wait,
+                    minimum_break_time=effective_min_break_time,
+                    regular_break_time=regular_break_time,
+                    maximum_break_time=maximum_break_time,
+                    extra_wait_tolerance=nearby.options.extra_wait_tolerance,
+                    do_not_cross_service_day_breaks=do_not_cross_service_day_breaks,
+                ):
+                    graph.add_edge(
+                        trip.id,
+                        following_trip.id,
+                        color="blue",
+                        weight=int(
+                            (
+                                following_trip.departure_time - trip.arrival_time
+                            ).total_seconds()
+                        ),
+                        **deadhead.to_edge_attributes(),
+                    )
+
     return graph
+
+
+@dataclass
+class _NearbyDepartures:
+    """The resolved nearby-departure options and the caches used while building one graph."""
+
+    options: NearbyDepartureOptions
+    router: DeadheadRouter
+    trips_by_departure_station: Dict[Station, List[Trip]]
+    stations_by_id: Dict[int, Station]
+    nearby_station_ids: Dict[int, List[int]]
+    """For each arrival stop ID, the IDs of the nearby departure stops, nearest first."""
+    _routes: Dict[Tuple[int, int], DeadheadRoute | None] = field(default_factory=dict)
+
+    @staticmethod
+    def create(
+        options: NearbyDepartureOptions,
+        trips: List[Trip],
+        trips_by_departure_station: Dict[Station, List[Trip]],
+    ) -> "_NearbyDepartures":
+        router = (
+            options.router
+            if options.router is not None
+            else ors_deadhead_router(ors_client_from_env())
+        )
+
+        session = object_session(trips[0])
+        if session is None:
+            raise ValueError("The trips must belong to a database session.")
+        nearby_station_ids = nearby_stations(
+            session,
+            origin_ids={trip.route.arrival_station_id for trip in trips},
+            candidate_ids={station.id for station in trips_by_departure_station},
+            max_count=options.max_nearby_stations,
+            max_distance=options.max_straight_line_distance,
+        )
+        return _NearbyDepartures(
+            options=options,
+            router=router,
+            trips_by_departure_station=trips_by_departure_station,
+            stations_by_id={s.id: s for s in trips_by_departure_station},
+            nearby_station_ids=nearby_station_ids,
+        )
+
+    def candidates(
+        self, arrival_station: Station
+    ) -> List[Tuple[DeadheadRoute, List[Trip]]]:
+        """For each nearby stop that can be reached, the deadhead to it and the trips departing there."""
+        result: List[Tuple[DeadheadRoute, List[Trip]]] = []
+        for station_id in self.nearby_station_ids.get(arrival_station.id, []):
+            station = self.stations_by_id[station_id]
+            key = (arrival_station.id, station_id)
+            if key not in self._routes:
+                self._routes[key] = self.router(arrival_station, station)
+            deadhead = self._routes[key]
+            if deadhead is not None:
+                result.append((deadhead, self.trips_by_departure_station[station]))
+        return result
 
 
 def solve(
@@ -290,10 +393,11 @@ def solve(
     )
 
     # The result is a list of edges
-    # Create a copy of our graph, delete all edges and add the ones from the result
+    # Create a copy of our graph, delete all edges and add the ones from the result (keeping their attributes, e.g.
+    # the deadheads to nearby stops)
     result_graph = graph.copy()
     result_graph.remove_edges_from(graph.edges)
-    result_graph.add_edges_from(result)
+    result_graph.add_edges_from((u, v, graph.edges[u, v]) for u, v in result)
     return result_graph
 
 
@@ -344,7 +448,10 @@ def write_back_rotation_plan(
     Deletes the original rotations and writes back the new rotations to the database. This is useful when the new
     rotations are better than the original rotations.
 
-    :param rot_graph: A directed acyclic graph containing the new rotations.
+    :param rot_graph: A directed acyclic graph containing the new rotations. For each edge carrying a deadhead to a
+        nearby stop (see :class:`DeadheadRoute`), an empty trip is inserted before the following trip: the candidate
+        trip created by :func:`materialize_deadhead_candidates`, or a new one. The remaining candidate trips are
+        deleted.
     :param session: An open database session.
     :param auto_assign_rotation_names: If True, the new rotations will be automatically named based on the lines
         of the trips in the rotation. If False, the new rotations will not be named.
@@ -379,6 +486,7 @@ def write_back_rotation_plan(
         scenario_id = rotations[0].scenario_id
         assert all(rotation.scenario_id == scenario_id for rotation in rotations)
 
+        new_rotations = []
         for set_of_nodes in nx.connected_components(rot_graph.to_undirected()):
             rotation = Rotation(
                 scenario_id=scenario_id,
@@ -389,11 +497,19 @@ def write_back_rotation_plan(
             for node in set_of_nodes:
                 trip = session.query(Trip).filter(Trip.id == node).one()
                 trip.rotation = rotation
+            new_rotations.append(rotation)
+
+        # Each deadhead goes into the rotation of the trip it leads to
+        add_deadhead_trips(rot_graph, session)
+
+        for rotation in new_rotations:
             # Sort the rotation's trips by departure time
             rotation.trips = sorted(
                 rotation.trips, key=lambda trip: trip.departure_time
             )
         session.flush()
+
+    discard_deadhead_candidates(rot_graph, session)
 
     if auto_assign_rotation_names:
         # Assign names to the new rotations

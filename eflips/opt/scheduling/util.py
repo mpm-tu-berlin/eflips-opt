@@ -3,6 +3,24 @@ import warnings
 from typing import List, Tuple, Dict
 
 import networkx as nx  # type: ignore
+from eflips.model import Trip
+
+GraphDict = Dict[str, List[Dict[str, int | float | Tuple[int | float | None, ...]]]]
+"""One (connected) graph in the format of the rust solver."""
+
+
+def crosses_service_day(trip: Trip, following_trip: Trip) -> bool:
+    """
+    Whether connecting two trips would cross a service day break, i.e. their (original) rotations start on different
+    dates.
+
+    :param trip: The earlier trip
+    :param following_trip: The trip that would follow it
+    """
+    return (
+        trip.rotation.trips[0].departure_time.date()
+        != following_trip.rotation.trips[0].departure_time.date()
+    )
 
 
 def _validate_input_graph(graph: nx.Graph) -> nx.Graph:
@@ -14,6 +32,7 @@ def _validate_input_graph(graph: nx.Graph) -> nx.Graph:
     - each node has a tuple exactly 2 weights, which are either None or floats between 0 and 1
         - if the tuple is empty, it is filled with None
     - each edge has a single weight, which is an integer between 0 and 1e6
+    - each edge may have a delta_soc, which is a float between 0 and 1
 
     :param graph: A directed acyclic graph as a networkx Graph
     :return: The validated graph. Raises an error if the graph is invalid
@@ -48,6 +67,9 @@ def _validate_input_graph(graph: nx.Graph) -> nx.Graph:
             elif i >= 2:
                 raise ValueError("More than two weights are not allowed.")
 
+    has_delta_socs = any(
+        graph.nodes[node]["weight"][0] is not None for node in graph.nodes
+    )
     for edge in graph.edges:
         if not isinstance(graph.edges[edge]["weight"], int):
             raise ValueError(
@@ -57,13 +79,27 @@ def _validate_input_graph(graph: nx.Graph) -> nx.Graph:
             raise ValueError(
                 "Each edge must have a single weight, which is an integer between 0 and 1e6."
             )
+        delta_soc = graph.edges[edge].get("delta_soc")
+        if delta_soc is not None and (
+            not isinstance(delta_soc, (int, float)) or not 0 <= delta_soc <= 1
+        ):
+            raise ValueError("An edge's delta_soc must be a float between 0 and 1.")
+        if (
+            has_delta_socs
+            and delta_soc is None
+            and "deadhead_distance" in graph.edges[edge]
+        ):
+            raise ValueError(
+                f"The deadhead of edge {edge} has no delta_soc, but the trips have. Add the consumption of the "
+                "deadheads (see eflips.opt.scheduling.deadheads) or create the graph without nearby departures."
+            )
 
     return graph
 
 
 def _subgraph_to_dict(
     graph: nx.Graph,
-) -> Dict[str, List[Dict[str, int | Tuple[int | float | None, ...]]]]:
+) -> GraphDict:
     """
     Convert a graph to a JSON object that can be used by the rust optimization model.
 
@@ -80,7 +116,8 @@ def _subgraph_to_dict(
             {
                 "source": 0,
                 "target": 1,
-                "weight": 300 # The edge weight (integer, 0-1e6)
+                "weight": 300, # The edge weight (integer, 0-1e6)
+                "delta_soc": 0.01 # Optional: the energy consumption of the connection itself (float, 0-1)
             },
             ...
         ]
@@ -100,21 +137,22 @@ def _subgraph_to_dict(
                 ),
             }
         )
-    edges = []
+    edges: List[Dict[str, int | float | Tuple[int | float | None, ...]]] = []
     for edge in graph.edges:
-        edges.append(
-            {
-                "source": edge[0],
-                "target": edge[1],
-                "weight": graph.edges[edge]["weight"],
-            }
-        )
+        edge_dict: Dict[str, int | float | Tuple[int | float | None, ...]] = {
+            "source": edge[0],
+            "target": edge[1],
+            "weight": graph.edges[edge]["weight"],
+        }
+        if graph.edges[edge].get("delta_soc") is not None:
+            edge_dict["delta_soc"] = graph.edges[edge]["delta_soc"]
+        edges.append(edge_dict)
     return {"nodes": nodes, "edges": edges}
 
 
 def _sort_graph_json(
-    graph_json: List[Dict[str, List[Dict[str, int | Tuple[int | float | None, ...]]]]],
-) -> List[Dict[str, List[Dict[str, int | Tuple[int | float | None, ...]]]]]:
+    graph_json: List[GraphDict],
+) -> List[GraphDict]:
     """
     For repeatability, sort the graph JSON
     :param graph_json: a list of dictionaries, each containing a 'nodes' and 'edges' key
