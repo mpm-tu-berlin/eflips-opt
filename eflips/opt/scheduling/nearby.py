@@ -8,6 +8,7 @@ then drives a short deadhead, arriving just in time for the departure. Such a co
 """
 
 import logging
+import math
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Sequence, Tuple
@@ -25,8 +26,8 @@ from eflips.opt.util import LonLat, ors_route
 
 logger = logging.getLogger(__name__)
 
-MIN_DEADHEAD_DURATION = timedelta(seconds=60)
-"""The shortest duration of a deadhead trip (the same minimum as in depot assignment)."""
+MIN_DEADHEAD_DURATION = timedelta(seconds=1)
+"""The shortest duration of a deadhead trip: a trip must arrive after it departs."""
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,7 @@ class DeadheadRoute:
     """The distance in meters. Always positive."""
 
     duration: timedelta
-    """The driving time. At least :data:`MIN_DEADHEAD_DURATION`."""
+    """The driving time, in whole seconds (rounded up). At least :data:`MIN_DEADHEAD_DURATION`."""
 
     geometry: LineString
     """The route taken, with ``(lon, lat)`` vertices."""
@@ -125,7 +126,7 @@ def ors_deadhead_router(client: openrouteservice.Client) -> DeadheadRouter:
             return None
         return DeadheadRoute(
             distance=distance,
-            duration=max(timedelta(seconds=round(duration)), MIN_DEADHEAD_DURATION),
+            duration=max(timedelta(seconds=math.ceil(duration)), MIN_DEADHEAD_DURATION),
             geometry=geometry,
         )
 
@@ -157,8 +158,14 @@ def nearby_stations(
     origin = aliased(Station)
     candidate = aliased(Station)
     # The third argument makes this a distance in meters on both PostGIS (where the geometries are cast to geography)
-    # and SpatiaLite (where it is the "use_ellipsoid" flag).
-    distance = func.ST_Distance(origin.geom, candidate.geom, True)
+    # and SpatiaLite (where it is the "use_ellipsoid" flag). The Z coordinate is dropped, as some SpatiaLite versions
+    # return NULL for the spheroid distance of 3D points.
+    force_2d = (
+        func.CastToXY
+        if session.get_bind().dialect.name == "sqlite"
+        else func.ST_Force2D
+    )
+    distance = func.ST_Distance(force_2d(origin.geom), force_2d(candidate.geom), True)
     ranked = (
         session.query(
             origin.id.label("origin_id"),
