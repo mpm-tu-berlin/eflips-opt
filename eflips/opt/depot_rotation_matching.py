@@ -1,13 +1,10 @@
 import asyncio
 import itertools
 import logging
-import os
-import warnings
 from datetime import timedelta
 from numbers import Number
-from typing import Any, Dict, List, Mapping, Tuple, Iterable
+from typing import Any, Dict, List, Tuple, Iterable
 from eflips.model.util import geometry_has_z, get_altitudes
-import openrouteservice  # type: ignore
 import pandas as pd
 import plotly.graph_objects as go  # type: ignore
 import pyomo.environ as pyo  # type: ignore
@@ -28,7 +25,7 @@ from eflips.model import (
 )
 from geoalchemy2.shape import to_shape, from_shape
 from pyomo.common.timing import report_timing  # type: ignore
-from shapely import Point, LineString
+from shapely import Point
 from sqlalchemy import func
 
 from eflips.opt.util import (
@@ -38,9 +35,10 @@ from eflips.opt.util import (
     get_rotation_vehicle_assign,
     get_depot_rot_assign,
     calculate_deadhead_costs,
+    line_with_altitudes as _line_with_altitudes,
+    ors_client_from_env,
+    LatLon,
 )
-
-LatLon = Tuple[float, float]
 
 
 def _route_cost_for(
@@ -52,21 +50,6 @@ def _route_cost_for(
     ]["cost"].iloc[0]
     assert isinstance(route_cost, dict)
     return route_cost
-
-
-def _line_with_altitudes(
-    line: LineString, altitude_by_latlon: Mapping[LatLon, float]
-) -> LineString:
-    """
-    Add a Z coordinate to every vertex of a 2D line.
-
-    :param line: a line with ``(lon, lat)`` vertices
-    :param altitude_by_latlon: altitudes keyed by ``(lat, lon)``, as :func:`get_altitudes` takes them
-    :return: the same line with ``(lon, lat, altitude)`` vertices
-    """
-    return LineString(
-        [(lon, lat, altitude_by_latlon[(lat, lon)]) for lon, lat in line.coords]
-    )
 
 
 class DepotRotationOptimizer:
@@ -378,22 +361,7 @@ class DepotRotationOptimizer:
         # Generate cost table
         cost_df = rotation_df.merge(depot_df, how="cross")
 
-        base_url = os.environ["BASE_URL"]
-
-        if base_url is None:
-            raise ValueError("BASE_URL is not set")
-
-        # Get API key from environment
-        if "OPENROUTESERVICE_API_KEY" in os.environ:
-            api_key = os.environ["OPENROUTESERVICE_API_KEY"]
-        else:
-            # If no API key, return None for geometry (will fall back to straight line)
-            warnings.warn(
-                "No OpenRouteService API key provided. Make sure your server does not need an API key."
-            )
-            api_key = None
-
-        client = openrouteservice.Client(base_url=base_url, key=api_key)
+        client = ors_client_from_env()
 
         # Run the async function
         deadhead_costs = asyncio.run(calculate_deadhead_costs(cost_df, client))

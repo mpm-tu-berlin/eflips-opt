@@ -3,9 +3,10 @@ import os
 import pickle
 import posixpath
 import urllib.parse
+import warnings
 from math import floor
-from tempfile import gettempdir
-from typing import Tuple, List, Dict, Coroutine, Any, Awaitable
+from tempfile import NamedTemporaryFile, gettempdir
+from typing import Tuple, List, Dict, Coroutine, Any, Awaitable, Mapping
 
 import numpy as np
 import openrouteservice  # type: ignore
@@ -25,6 +26,119 @@ from geoalchemy2.shape import to_shape
 from shapely import LineString
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+LatLon = Tuple[float, float]
+LonLat = Tuple[float, float]
+
+
+def ors_client_from_env() -> openrouteservice.Client:
+    """
+    Create an OpenRouteService client from the ``BASE_URL`` and (optional) ``OPENROUTESERVICE_API_KEY`` environment
+    variables.
+
+    :return: An OpenRouteService client
+    :raises ValueError: If ``BASE_URL`` is not set
+    """
+    base_url = os.environ.get("BASE_URL")
+    if not base_url:
+        raise ValueError(
+            "BASE_URL is not set. Set it to the URL of an OpenRouteService server."
+        )
+    api_key = os.environ.get("OPENROUTESERVICE_API_KEY")
+    if api_key is None:
+        warnings.warn(
+            "No OpenRouteService API key provided. Make sure your server does not need an API key."
+        )
+    return openrouteservice.Client(base_url=base_url, key=api_key)
+
+
+def _ors_cache_dir() -> str:
+    """The directory OpenRouteService responses are cached in. It is created if it does not exist."""
+    if os.environ.get("DEPOT_ROTATION_MATCHING_ORS_CACHE") is not None:
+        cache_dir = os.environ["DEPOT_ROTATION_MATCHING_ORS_CACHE"]
+    else:
+        cache_dir = os.path.join(gettempdir(), f"eflips-ors-cache-{os.getuid()}")
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+
+def _ors_directions_url(
+    profile: str = "driving-car", service: str = "directions"
+) -> str:
+    """The (relative) URL of the OpenRouteService directions endpoint."""
+    relative_url = posixpath.join("v2", service, profile)
+    return urllib.parse.urljoin("v2", relative_url)
+
+
+def _decode_ors_geometry(route: Dict[str, Any]) -> LineString:
+    """
+    Decode the encoded polyline of an OpenRouteService route into a ``(lon, lat)`` LineString.
+
+    A route with a single point gets that point duplicated to create a valid-ish LineString.
+    """
+    # polyline decodes to (lat, lon); shapely (and our geometries) use (lon, lat)
+    shape = [(coord[1], coord[0]) for coord in polyline.decode(route["geometry"])]
+    if len(shape) == 1:
+        shape.append(shape[0])
+    return LineString(shape)
+
+
+def ors_route(
+    point_from: LonLat,
+    point_to: LonLat,
+    client: openrouteservice.Client,
+    profile: str = "driving-car",
+) -> Tuple[float, float, LineString]:
+    """
+    Route between two points using OpenRouteService. Responses are cached on disk (see :func:`_ors_cache_dir`).
+
+    :param point_from: The start point as ``(lon, lat)``
+    :param point_to: The end point as ``(lon, lat)``
+    :param client: An OpenRouteService client
+    :param profile: The OpenRouteService profile
+    :return: The distance in meters, the duration in seconds and the route as a ``(lon, lat)`` LineString
+    """
+    file_path = os.path.join(
+        _ors_cache_dir(), f"{(tuple(point_from), tuple(point_to))}.pkl"
+    )
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as cached:
+            response = pickle.load(cached)
+    else:
+        response = client.request(
+            url=_ors_directions_url(profile),
+            post_json={"coordinates": (point_from, point_to), "format": "geojson"},
+        )
+        # Write atomically, as multiple processes may share the cache
+        with NamedTemporaryFile(
+            "wb", dir=os.path.dirname(file_path), delete=False
+        ) as temporary:
+            pickle.dump(response, temporary)
+        os.replace(temporary.name, file_path)
+
+    route = response["routes"][0]
+    # Using segments instead of summary for 0 distance cases
+    segment = route["segments"][0]
+    return (
+        float(segment["distance"]),
+        float(segment["duration"]),
+        _decode_ors_geometry(route),
+    )
+
+
+def line_with_altitudes(
+    line: LineString, altitude_by_latlon: Mapping[LatLon, float]
+) -> LineString:
+    """
+    Add a Z coordinate to every vertex of a 2D line.
+
+    :param line: a line with ``(lon, lat)`` vertices
+    :param altitude_by_latlon: altitudes keyed by ``(lat, lon)``, as :func:`eflips.model.util.get_altitudes` takes them
+    :return: the same line with ``(lon, lat, altitude)`` vertices
+    """
+    return LineString(
+        [(lon, lat, altitude_by_latlon[(lat, lon)]) for lon, lat in line.coords]
+    )
 
 
 async def deadhead_cost(
@@ -52,23 +166,14 @@ async def deadhead_cost(
     """
 
     base_url = os.environ["BASE_URL"]
-    relative_url = posixpath.join("v2", service, profile)
-    new_url = urllib.parse.urljoin("v2", relative_url)
+    new_url = _ors_directions_url(profile, service)
     if base_url is None:
         raise ValueError("BASE_URL is not set")
 
     coords = (point_start, point_end, point_depot)
 
-    if os.environ.get("DEPOT_ROTATION_MATCHING_ORS_CACHE") is not None:
-        temporary_directory = os.environ["DEPOT_ROTATION_MATCHING_ORS_CACHE"]
-    else:
-        temporary_directory = os.path.join(
-            gettempdir(), f"eflips-ors-cache-{os.getuid()}"
-        )
-    os.makedirs(temporary_directory, exist_ok=True)
-
     file_name = f"{coords}.pkl"
-    file_path = os.path.join(temporary_directory, file_name)
+    file_path = os.path.join(_ors_cache_dir(), file_name)
 
     if os.path.exists(file_path):
         with open(file_path, "rb") as file:
@@ -91,18 +196,6 @@ async def deadhead_cost(
         with open(file_path, "wb") as file:
             pickle.dump(routes, file)
 
-    inbound_shape = polyline.decode(routes[0]["routes"][0]["geometry"])
-    outbound_shape = polyline.decode(routes[1]["routes"][0]["geometry"])
-    # We need to swap the order of the coordinates because openrouteservice returns them in (lon, lat) format
-    inbound_shape = [(coord[1], coord[0]) for coord in inbound_shape]
-    outbound_shape = [(coord[1], coord[0]) for coord in outbound_shape]
-
-    # If length 1, we need to duplicate the point to create a valid-ish linestring
-    if len(inbound_shape) == 1:
-        inbound_shape.append(inbound_shape[0])
-    if len(outbound_shape) == 1:
-        outbound_shape.append(outbound_shape[0])
-
     return {
         "distance": (
             routes[0]["routes"][0]["segments"][0]["distance"],
@@ -113,8 +206,8 @@ async def deadhead_cost(
             round(routes[1]["routes"][0]["segments"][0]["duration"]),
         ),
         "geometry": (
-            LineString(inbound_shape),
-            LineString(outbound_shape),
+            _decode_ors_geometry(routes[0]["routes"][0]),
+            _decode_ors_geometry(routes[1]["routes"][0]),
         ),
     }  # Using segments instead of summary for 0 distance cases
 
