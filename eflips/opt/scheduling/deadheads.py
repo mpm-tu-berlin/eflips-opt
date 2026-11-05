@@ -46,6 +46,7 @@ CANDIDATE_ROTATION_ATTRIBUTE = "deadhead_candidate_rotation_id"
 """The graph attribute holding the ID of the rotation of the candidate deadhead trips."""
 
 CANDIDATE_ROTATION_NAME = "Deadhead candidates (temporary)"
+"""The name of the rotation holding the candidate deadhead trips."""
 
 
 def deadhead_route_name(origin: Station, destination: Station) -> str:
@@ -65,10 +66,12 @@ class _DeadheadEdge:
 
     @property
     def origin(self) -> Station:
+        """Where the deadhead starts: the arrival stop of ``trip``."""
         return self.trip.route.arrival_station
 
     @property
     def destination(self) -> Station:
+        """Where the deadhead ends: the departure stop of ``following_trip``."""
         return self.following_trip.route.departure_station
 
 
@@ -79,13 +82,16 @@ def _deadhead_edges(
 ) -> List[_DeadheadEdge]:
     """The edges of ``graph`` (or the given ones) that need a deadhead."""
     result = []
-    for u, v in graph.edges if edges is None else edges:
-        data = graph.edges[u, v]
+    for trip_id, following_trip_id in graph.edges if edges is None else edges:
+        data = graph.edges[trip_id, following_trip_id]
         deadhead = DeadheadRoute.from_edge_attributes(data)
         if deadhead is not None:
             result.append(
                 _DeadheadEdge(
-                    session.get_one(Trip, u), session.get_one(Trip, v), deadhead, data
+                    trip=session.get_one(Trip, trip_id),
+                    following_trip=session.get_one(Trip, following_trip_id),
+                    deadhead=deadhead,
+                    data=data,
                 )
             )
     return result
@@ -100,6 +106,7 @@ class _DeadheadRouteFactory:
     altitude_by_latlon: Dict[LatLon, float]
     """The altitudes of the vertices of the routes to be created; empty if the geometries have no Z coordinate."""
     _routes: Dict[Tuple[int, int], Route] = field(default_factory=dict)
+    """The routes found or created so far, by (origin, destination) ID. Needed as new routes are not flushed yet."""
 
     @staticmethod
     def create(
@@ -107,8 +114,8 @@ class _DeadheadRouteFactory:
         scenario_id: int,
         edges: Iterable[_DeadheadEdge],
     ) -> "_DeadheadRouteFactory":
-        """A factory for the routes of the given edges. The altitudes of all routes to be created are looked up in one
-        batch."""
+        """A factory for the routes of ``edges``, with the altitudes of all routes to be created looked up at once."""
+        # One batch, as the elevation API is billed per request
         factory = _DeadheadRouteFactory(session, scenario_id, altitude_by_latlon={})
         if geometry_has_z():
             latlons: List[LatLon] = []
@@ -123,6 +130,7 @@ class _DeadheadRouteFactory:
         return factory
 
     def _existing_route(self, origin: Station, destination: Station) -> Route | None:
+        """The deadhead route from ``origin`` to ``destination`` in the database, if any."""
         return (
             self.session.query(Route)
             .filter(
@@ -138,8 +146,7 @@ class _DeadheadRouteFactory:
     def route(
         self, origin: Station, destination: Station, deadhead: DeadheadRoute
     ) -> Route:
-        """The deadhead route from origin to destination: the one created before, or a new one following the
-        deadhead's geometry."""
+        """The deadhead route from ``origin`` to ``destination``: an existing one, or a new one along ``deadhead``."""
         key = (origin.id, destination.id)
         if key in self._routes:
             return self._routes[key]
@@ -152,6 +159,7 @@ class _DeadheadRouteFactory:
     def _new_route(
         self, origin: Station, destination: Station, deadhead: DeadheadRoute
     ) -> Route:
+        """A new route from ``origin`` to ``destination`` along ``deadhead``."""
         # Measure the 2D shape in the database, so the distance matches the route's geometry check constraint. The Z
         # values are altitudes in meters, while X/Y are degrees, so a 3D length would mix units.
         shape_2d = from_shape(deadhead.geometry, srid=4326)
@@ -199,6 +207,7 @@ class _DeadheadRouteFactory:
 def _deadhead_times(edge: _DeadheadEdge) -> Tuple[datetime, datetime]:
     """The departure and arrival of the deadhead: it arrives just in time for the departure of the following trip."""
     departure_time = edge.following_trip.departure_time - edge.deadhead.duration
+    # The graph only offers deadheads that fit; this guards against a graph changed since
     if edge.origin.id == edge.destination.id or departure_time < edge.trip.arrival_time:
         raise ValueError(
             f"The deadhead between trips {edge.trip.id} and {edge.following_trip.id} does not fit."

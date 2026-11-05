@@ -1,4 +1,5 @@
 import lzma
+import math
 import os
 import random
 from datetime import datetime, timedelta, timezone
@@ -17,7 +18,8 @@ from eflips.model import (
     Station,
     TripType,
 )
-from shapely import LineString
+from geoalchemy2.shape import from_shape
+from shapely import LineString, Point
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import Session
 
@@ -35,7 +37,11 @@ from eflips.opt.scheduling.deadheads import (
     discard_deadhead_candidates,
     materialize_deadhead_candidates,
 )
+import eflips.opt.scheduling.nearby as nearby_module
 from eflips.opt.scheduling.nearby import (
+    MIN_DEADHEAD_DURATION,
+    STRAIGHT_LINE_SPEED_KMH,
+    ors_deadhead_router,
     DeadheadRoute,
     NearbyDepartureOptions,
     nearby_connections,
@@ -321,6 +327,7 @@ class TestNearbyConnections:
         )
 
     def arriving_trip(self) -> Trip:
+        """The trip whose followers are selected; it arrives at START."""
         return _transient_trip(
             1,
             self.START - timedelta(minutes=30),
@@ -329,6 +336,7 @@ class TestNearbyConnections:
         )
 
     def select(self, waits: List[float], **kwargs) -> List[int]:
+        """The waits (in minutes) of the departures selected out of departures waiting ``waits`` minutes."""
         arguments = dict(
             baseline_wait=None,
             minimum_break_time=timedelta(0),
@@ -349,9 +357,11 @@ class TestNearbyConnections:
         )
 
     def test_not_longer_than_baseline(self):
+        """Nearby departures may not wait longer than the first departure at the arrival stop."""
         assert self.select([5, 10, 12], baseline_wait=timedelta(minutes=10)) == [5, 10]
 
     def test_tolerance(self):
+        """The tolerance allows nearby departures waiting a bit longer than at the arrival stop."""
         assert self.select(
             [5, 10, 12, 13],
             baseline_wait=timedelta(minutes=10),
@@ -359,6 +369,7 @@ class TestNearbyConnections:
         ) == [5, 10, 12]
 
     def test_tolerance_capped_at_maximum_break(self):
+        """The tolerance never allows waiting longer than the maximum break."""
         assert self.select(
             [58, 62],
             baseline_wait=timedelta(minutes=55),
@@ -367,6 +378,7 @@ class TestNearbyConnections:
 
     def test_break_before_deadhead(self):
         # The deadhead takes 3 minutes, so a 2 minute break only fits with a wait of at least 5 minutes
+        """The minimum break is taken before the deadhead."""
         assert self.select(
             [4, 5],
             baseline_wait=timedelta(minutes=10),
@@ -374,15 +386,19 @@ class TestNearbyConnections:
         ) == [5]
 
     def test_no_baseline_regular_window(self):
+        """Without a departure at the arrival stop, all nearby departures within the regular break qualify."""
         assert self.select([20, 25, 40]) == [20, 25]
 
     def test_no_baseline_fallback_to_first_within_maximum(self):
+        """Without a regular one, only the first nearby departure within the maximum break qualifies."""
         assert self.select([50, 40, 70]) == [40]
 
     def test_no_baseline_nothing_within_maximum(self):
+        """Departures after the maximum break never qualify."""
         assert self.select([70]) == []
 
     def test_service_day_break(self):
+        """Connections across a service day break are not offered when they are forbidden."""
         arriving = self.arriving_trip()
         same_day = self.trip_waiting(100, 10)
         next_day = self.trip_waiting(101, 12, rotation_day=1)
@@ -399,6 +415,7 @@ class TestNearbyConnections:
         assert [t.id for t, _ in result] == [100]
 
     def test_edge_attribute_round_trip(self):
+        """A deadhead survives being stored as (scalar) edge attributes."""
         attributes = self.DEADHEAD.to_edge_attributes()
         assert all(
             isinstance(value, (int, float, str)) for value in attributes.values()
@@ -412,6 +429,7 @@ class TestEdgeDeltaSoc:
 
     @staticmethod
     def chain(second_edge_delta_soc: float | None) -> nx.DiGraph:
+        """Three trips of 0.3 each in a chain; the second connection optionally consumes energy itself."""
         graph = nx.DiGraph()
         for node in (1, 2, 3):
             graph.add_node(node, weight=(0.3, None))
@@ -422,12 +440,15 @@ class TestEdgeDeltaSoc:
         return graph
 
     def test_without_edge_delta_soc(self):
+        """Without edge energy, the chain is one block."""
         assert sorted(solve(self.chain(None)).edges) == [(1, 2), (2, 3)]
 
     def test_edge_delta_soc_splits_rotation(self):
+        """With edge energy, the chain exceeds the battery and is split before the expensive connection."""
         assert sorted(solve(self.chain(0.5)).edges) == [(1, 2)]
 
     def test_edge_delta_soc_validated(self):
+        """Edge energy above a full battery is rejected."""
         with pytest.raises(ValueError):
             solve(self.chain(1.5))
 
@@ -438,6 +459,7 @@ class TestNearbyDepartures:
 
     @pytest.fixture(scope="class")
     def session(self):
+        """A session on a fresh import of the one-day database."""
         if os.environ.get("DATABASE_URL") is None:
             raise ValueError("Please set the DATABASE_URL environment variable.")
 
@@ -453,6 +475,7 @@ class TestNearbyDepartures:
 
     @pytest.fixture(scope="class")
     def trip_list(self, session) -> List[Trip]:
+        """The passenger trips of the smallest vehicle type."""
         scenario = session.query(Scenario).filter(Scenario.id == 1).one()
         trips_by_vehicle_type = passenger_trips_by_vehicle_type(scenario, session)
         vehicle_type = min(
@@ -462,15 +485,18 @@ class TestNearbyDepartures:
 
     @staticmethod
     def blue_edges(graph: nx.DiGraph) -> List[Tuple[int, int]]:
+        """The edges to departures from nearby stops."""
         return [e for e in graph.edges if graph.edges[e]["color"] == "blue"]
 
     def test_disabled(self, trip_list):
+        """Without nearby departures, no edge carries a deadhead."""
         graph = create_graph(trip_list, nearby_departures=None)
         assert self.blue_edges(graph) == []
         for edge in graph.edges:
             assert DeadheadRoute.from_edge_attributes(graph.edges[edge]) is None
 
     def test_adds_nearby_edges(self, session, trip_list):
+        """Nearby edges are added on top of the same-stop ones, and each of them is feasible and worthwhile."""
         options = NearbyDepartureOptions()
         minimum_break_time = timedelta(minutes=2)
         same_stop = create_graph(
@@ -516,6 +542,7 @@ class TestNearbyDepartures:
                 assert graph.edges[u, v]["weight"] <= min(same_stop_waits)
 
     def test_nearby_stations(self, session, trip_list):
+        """The spatial query returns the nearest other stops within the radius, nearest first."""
         origin_ids = {trip.route.arrival_station_id for trip in trip_list}
         candidate_ids = {trip.route.departure_station_id for trip in trip_list}
         result = nearby_stations(session, origin_ids, candidate_ids, 3, 1000.0)
@@ -536,6 +563,7 @@ class TestNearbyDepartures:
             assert all(d <= 1000.0 for d in distances)
 
     def test_unpriced_deadheads(self, trip_list):
+        """Solving a graph with trip energy but unpriced deadheads is refused."""
         consumptions = {trip.id: 0.01 for trip in trip_list}
         graph = create_graph(trip_list, delta_socs=consumptions)
         assert len(self.blue_edges(graph)) > 0
@@ -544,6 +572,7 @@ class TestNearbyDepartures:
             solve(graph)
 
     def test_priced_deadheads(self, session, trip_list):
+        """Materialized and priced deadheads limit the blocks, and write-back keeps only the used ones."""
         graph = create_graph(trip_list)
         blue = self.blue_edges(graph)
         assert len(blue) > 0
@@ -609,6 +638,7 @@ class TestNearbyDepartures:
         session.rollback()
 
     def test_discard_candidates(self, session, trip_list):
+        """Discarding removes the candidate trips and their rotation."""
         graph = create_graph(trip_list)
         candidates = materialize_deadhead_candidates(graph, session)
         rotation_id = graph.graph[CANDIDATE_ROTATION_ATTRIBUTE]
@@ -619,9 +649,11 @@ class TestNearbyDepartures:
         session.rollback()
 
     def test_custom_router(self, trip_list):
+        """A custom router is used, and asked once per pair of stops."""
         calls: List[Tuple[int, int]] = []
 
         def no_deadheads(origin: Station, destination: Station) -> None:
+            """A router that finds no deadhead, recording its calls."""
             calls.append((origin.id, destination.id))
             return None
 
@@ -634,11 +666,13 @@ class TestNearbyDepartures:
         assert len(calls) == len(set(calls))
 
     def test_needs_base_url(self, trip_list, monkeypatch):
+        """The default router needs BASE_URL."""
         monkeypatch.delenv("BASE_URL")
         with pytest.raises(ValueError, match="BASE_URL"):
             create_graph(trip_list)
 
     def test_write_back(self, session, trip_list):
+        """Write-back adds deadhead trips on routes that are reused when scheduling again."""
         graph = create_graph(trip_list)
         solution = solve(graph)
         used = [
@@ -676,6 +710,7 @@ class TestNearbyDepartures:
 
     @staticmethod
     def deadhead_route_ids(session, used: List[Tuple[int, int]]) -> set:
+        """The routes of the deadheads before the following trips of ``used``."""
         ids = set()
         for u, v in used:
             following_trip = session.get(Trip, v)
@@ -693,6 +728,7 @@ class TestNearbyDepartures:
 
     @staticmethod
     def check_deadhead_trips(session, used: List[Tuple[int, int]]) -> None:
+        """Each used deadhead sits between its trips, from the arrival to the departure stop, just in time."""
         for u, v in used:
             trip, following_trip = session.get(Trip, u), session.get(Trip, v)
             if trip.rotation_id != following_trip.rotation_id:
@@ -715,3 +751,58 @@ class TestNearbyDepartures:
                 trip.route.arrival_station,
                 following_trip.route.departure_station,
             ]
+
+
+class TestOrsDeadheadRouter:
+    """The OpenRouteService router's handling of routes without length (no database needed)."""
+
+    @staticmethod
+    def station(lon: float, lat: float) -> Station:
+        """A stop that is not in the database."""
+        return Station(name=f"{lon},{lat}", geom=from_shape(Point(lon, lat), srid=4326))
+
+    @staticmethod
+    def router_returning(monkeypatch, distance: float, duration: float):
+        """An OpenRouteService router whose (patched) route always has the given distance and duration."""
+
+        def fake_ors_route(start, end, client):
+            """The route OpenRouteService would return."""
+            line = (
+                LineString([start, end]) if distance > 0 else LineString([start, start])
+            )
+            return distance, duration, line
+
+        monkeypatch.setattr(nearby_module, "ors_route", fake_ors_route)
+        return ors_deadhead_router(client=None)
+
+    def test_routed(self, monkeypatch):
+        """A routed deadhead keeps its distance; its duration is rounded up to whole seconds."""
+        route = self.router_returning(monkeypatch, 120.0, 20.4)(
+            self.station(13.0, 52.0), self.station(13.001, 52.0)
+        )
+        assert route.distance == 120.0
+        assert route.duration == timedelta(seconds=21)
+
+    def test_snapped_to_the_same_point(self, monkeypatch):
+        # About 30 m apart, but both stops snap to the same point of the road network
+        """A route without length between distinct stops becomes a straight line."""
+        origin, destination = self.station(13.0, 52.0), self.station(13.0, 52.00027)
+        route = self.router_returning(monkeypatch, 0.0, 0.0)(origin, destination)
+        assert route is not None
+        assert route.distance == pytest.approx(30.0, abs=0.5)
+        assert route.duration == timedelta(
+            seconds=math.ceil(route.distance / (STRAIGHT_LINE_SPEED_KMH / 3.6))
+        )
+        assert list(route.geometry.coords) == [(13.0, 52.0), (13.0, 52.00027)]
+
+    def test_very_short(self, monkeypatch):
+        """Very short deadheads take at least one second."""
+        route = self.router_returning(monkeypatch, 0.4, 0.05)(
+            self.station(13.0, 52.0), self.station(13.000005, 52.0)
+        )
+        assert route.duration == MIN_DEADHEAD_DURATION
+
+    def test_same_place(self, monkeypatch):
+        """Stops at the same place get no deadhead."""
+        router = self.router_returning(monkeypatch, 0.0, 0.0)
+        assert router(self.station(13.0, 52.0), self.station(13.0, 52.0)) is None

@@ -53,8 +53,8 @@ def dummy_request(
     """An OpenRouteService directions response for a straight line between the two requested points."""
     assert post_json is not None
     coordinates: Sequence[Tuple[float, float]] = post_json["coordinates"]
-    start, end = (tuple(map(float, c)) for c in coordinates)
-    distance = DUMMY_DETOUR_FACTOR * haversine_distance(start, end)  # type: ignore[arg-type]
+    start, end = ((float(lon), float(lat)) for lon, lat in coordinates)
+    distance = DUMMY_DETOUR_FACTOR * haversine_distance(start, end)
     return {
         "routes": [
             {
@@ -63,7 +63,7 @@ def dummy_request(
                 "segments": [
                     {
                         "distance": distance,
-                        "duration": distance / (DUMMY_SPEED_KMH / 3.6),
+                        "duration": distance / (DUMMY_SPEED_KMH / 3.6),  # km/h -> m/s
                     }
                 ],
             }
@@ -73,6 +73,7 @@ def dummy_request(
 
 @pytest.fixture(autouse=True, scope="session")
 def dummy_openrouteservice() -> Iterator[None]:
+    """Route through the dummy instead of a real OpenRouteService server, unless BASE_URL was set."""
     if not USE_DUMMY_ORS:
         yield
         return

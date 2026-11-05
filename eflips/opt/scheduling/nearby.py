@@ -21,13 +21,18 @@ from shapely import LineString
 from sqlalchemy import func
 from sqlalchemy.orm import Session, aliased
 
-from eflips.opt.scheduling.util import crosses_service_day
+from eflips.opt.scheduling.util import DEADHEAD_DISTANCE_ATTRIBUTE, crosses_service_day
 from eflips.opt.util import LonLat, ors_route
 
 logger = logging.getLogger(__name__)
 
 MIN_DEADHEAD_DURATION = timedelta(seconds=1)
 """The shortest duration of a deadhead trip: a trip must arrive after it departs."""
+
+STRAIGHT_LINE_SPEED_KMH = 15.0
+"""The speed of a deadhead that OpenRouteService returns with no length (see :func:`ors_deadhead_router`)."""
+
+EARTH_RADIUS_M = 6371000.0
 
 
 @dataclass(frozen=True)
@@ -48,7 +53,7 @@ class DeadheadRoute:
         The edge attributes describing this deadhead. They are scalars, so the graph can be stored as GraphML.
         """
         return {
-            "deadhead_distance": self.distance,
+            DEADHEAD_DISTANCE_ATTRIBUTE: self.distance,
             "deadhead_duration": int(self.duration.total_seconds()),
             "deadhead_geometry": self.geometry.wkt,
         }
@@ -60,12 +65,12 @@ class DeadheadRoute:
 
         :param data: The attributes of an edge of the scheduling graph
         """
-        if "deadhead_distance" not in data:
+        if DEADHEAD_DISTANCE_ATTRIBUTE not in data:
             return None
         geometry = shapely.wkt.loads(data["deadhead_geometry"])
         assert isinstance(geometry, LineString)
         return DeadheadRoute(
-            distance=float(data["deadhead_distance"]),
+            distance=float(data[DEADHEAD_DISTANCE_ATTRIBUTE]),
             duration=timedelta(seconds=int(data["deadhead_duration"])),
             geometry=geometry,
         )
@@ -95,22 +100,38 @@ class NearbyDepartureOptions:
 
 
 def _lon_lat(station: Station) -> LonLat:
+    """The ``(lon, lat)`` of a stop."""
     # The column is typed as Geometry, but loaded as a WKBElement
     point = to_shape(station.geom)  # type: ignore[arg-type]
     return point.x, point.y
+
+
+def _straight_line_distance(start: LonLat, end: LonLat) -> float:
+    """The great-circle distance between two ``(lon, lat)`` points in meters."""
+    lon1, lat1, lon2, lat2 = map(math.radians, (*start, *end))
+    h = (
+        math.sin((lat2 - lat1) / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    )
+    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(h))
 
 
 def ors_deadhead_router(client: openrouteservice.Client) -> DeadheadRouter:
     """
     A :data:`DeadheadRouter` using OpenRouteService.
 
-    The router returns None if a stop has no location, the route has no length or OpenRouteService cannot route
-    between the stops.
+    OpenRouteService snaps both stops to the road network. Stops a few meters apart (up to ~60 m in the data seen) may
+    snap to the same point, so the route has no length. Then the deadhead is a straight line between the stops, driven
+    at :data:`STRAIGHT_LINE_SPEED_KMH`.
+
+    The router returns None if a stop has no location, the stops are at the same place or OpenRouteService cannot
+    route between the stops.
 
     :param client: An OpenRouteService client
     """
 
     def route(origin: Station, destination: Station) -> DeadheadRoute | None:
+        """The deadhead from ``origin`` to ``destination``, or None if there is no usable one."""
         if origin.geom is None or destination.geom is None:
             return None
         try:
@@ -123,7 +144,13 @@ def ors_deadhead_router(client: openrouteservice.Client) -> DeadheadRouter:
             )
             return None
         if distance <= 0:
-            return None
+            start, end = _lon_lat(origin), _lon_lat(destination)
+            distance = _straight_line_distance(start, end)
+            if distance <= 0:
+                return None
+            speed_m_per_s = STRAIGHT_LINE_SPEED_KMH / 3.6
+            duration = distance / speed_m_per_s
+            geometry = LineString([start, end])
         return DeadheadRoute(
             distance=distance,
             duration=max(timedelta(seconds=math.ceil(duration)), MIN_DEADHEAD_DURATION),
@@ -234,6 +261,7 @@ def nearby_connections(
     for deadhead, departures in candidates:
         for following_trip in departures:
             wait = following_trip.departure_time - trip.arrival_time
+            # The break is taken at the arrival stop, before driving the deadhead
             if wait - deadhead.duration < minimum_break_time:
                 continue
             if wait > maximum_break_time:
@@ -246,10 +274,21 @@ def nearby_connections(
 
     if baseline_wait is not None:
         limit = baseline_wait + extra_wait_tolerance
-        return [(t, d) for wait, t, d in feasible if wait <= limit]
+        return [
+            (following_trip, deadhead)
+            for wait, following_trip, deadhead in feasible
+            if wait <= limit
+        ]
 
-    regular = [(t, d) for wait, t, d in feasible if wait <= regular_break_time]
-    if len(regular) > 0 or len(feasible) == 0:
-        return regular
-    _, first_trip, first_deadhead = min(feasible, key=lambda x: (x[0], x[1].id))
+    within_regular_break = [
+        (following_trip, deadhead)
+        for wait, following_trip, deadhead in feasible
+        if wait <= regular_break_time
+    ]
+    if len(within_regular_break) > 0 or len(feasible) == 0:
+        return within_regular_break
+    # Like at the same stop: without a regular connection, allow only the first one up to the maximum break
+    _, first_trip, first_deadhead = min(
+        feasible, key=lambda option: (option[0], option[1].id)
+    )
     return [(first_trip, first_deadhead)]

@@ -8,6 +8,9 @@ from eflips.model import Trip
 GraphDict = Dict[str, List[Dict[str, int | float | Tuple[int | float | None, ...]]]]
 """One (connected) graph in the format of the rust solver."""
 
+DEADHEAD_DISTANCE_ATTRIBUTE = "deadhead_distance"
+"""The edge attribute marking a connection that needs a deadhead (see :class:`eflips.opt.scheduling.nearby.DeadheadRoute`)."""
+
 
 def crosses_service_day(trip: Trip, following_trip: Trip) -> bool:
     """
@@ -67,6 +70,7 @@ def _validate_input_graph(graph: nx.Graph) -> nx.Graph:
             elif i >= 2:
                 raise ValueError("More than two weights are not allowed.")
 
+    # Unpriced deadheads would make the solver underestimate the energy of blocks using them
     has_delta_socs = any(
         graph.nodes[node]["weight"][0] is not None for node in graph.nodes
     )
@@ -87,7 +91,7 @@ def _validate_input_graph(graph: nx.Graph) -> nx.Graph:
         if (
             has_delta_socs
             and delta_soc is None
-            and "deadhead_distance" in graph.edges[edge]
+            and DEADHEAD_DISTANCE_ATTRIBUTE in graph.edges[edge]
         ):
             raise ValueError(
                 f"The deadhead of edge {edge} has no delta_soc, but the trips have. Add the consumption of the "

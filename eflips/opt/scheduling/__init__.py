@@ -300,6 +300,7 @@ class _NearbyDepartures:
     nearby_station_ids: Dict[int, List[int]]
     """For each arrival stop ID, the IDs of the nearby departure stops, nearest first."""
     _routes: Dict[Tuple[int, int], DeadheadRoute | None] = field(default_factory=dict)
+    """The deadheads routed so far, by (origin, destination) ID; many trips share a pair of stops."""
 
     @staticmethod
     def create(
@@ -307,6 +308,7 @@ class _NearbyDepartures:
         trips: List[Trip],
         trips_by_departure_station: Dict[Station, List[Trip]],
     ) -> "_NearbyDepartures":
+        """Resolve ``options`` for ``trips`` and look up the nearby stops of all their arrival stops at once."""
         router = (
             options.router
             if options.router is not None
