@@ -136,7 +136,7 @@ def create_graph(
         break (see :class:`NearbyDepartureOptions` and :func:`eflips.opt.scheduling.nearby.nearby_connections`). Such
         edges ("blue") carry the deadhead (see :class:`DeadheadRoute`). Their weight is the time between the arrival
         and the following departure. By default, the deadheads are routed with OpenRouteService, which needs the
-        ``BASE_URL`` environment variable. Set to None to only connect trips at the same stop.
+        ``OPENROUTESERVICE_BASE_URL`` environment variable. Set to None to only connect trips at the same stop.
 
         If the graph has energy consumptions, the consumption of the deadheads must be added before solving: see
         :mod:`eflips.opt.scheduling.deadheads` (:func:`materialize_deadhead_candidates`, then
