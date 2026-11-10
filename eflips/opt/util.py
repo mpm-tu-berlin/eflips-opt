@@ -6,7 +6,7 @@ import urllib.parse
 import warnings
 from math import floor
 from tempfile import NamedTemporaryFile, gettempdir
-from typing import Tuple, List, Dict, Coroutine, Any, Awaitable, Mapping
+from typing import Tuple, List, Dict, Coroutine, Any, Awaitable, Mapping, Optional
 
 import numpy as np
 import openrouteservice  # type: ignore
@@ -31,18 +31,42 @@ LatLon = Tuple[float, float]
 LonLat = Tuple[float, float]
 
 
+def ors_base_url() -> Optional[str]:
+    """
+    The URL of the OpenRouteService server, read from the ``OPENROUTESERVICE_BASE_URL`` environment variable.
+
+    The old name ``BASE_URL`` is still honoured if (and only if) ``OPENROUTESERVICE_BASE_URL`` is not set, but it is
+    deprecated and raises a :class:`PendingDeprecationWarning`.
+
+    :return: The server URL, or None if neither variable is set (or the value is empty).
+    """
+    base_url = os.environ.get("OPENROUTESERVICE_BASE_URL")
+    if base_url:
+        return base_url
+
+    legacy_base_url = os.environ.get("BASE_URL")
+    if legacy_base_url:
+        warnings.warn(
+            "The BASE_URL environment variable is deprecated, use OPENROUTESERVICE_BASE_URL instead.",
+            PendingDeprecationWarning,
+            stacklevel=2,
+        )
+        return legacy_base_url
+    return None
+
+
 def ors_client_from_env() -> openrouteservice.Client:
     """
-    Create an OpenRouteService client from the ``BASE_URL`` and (optional) ``OPENROUTESERVICE_API_KEY`` environment
-    variables.
+    Create an OpenRouteService client from the ``OPENROUTESERVICE_BASE_URL`` and (optional)
+    ``OPENROUTESERVICE_API_KEY`` environment variables.
 
     :return: An OpenRouteService client
-    :raises ValueError: If ``BASE_URL`` is not set
+    :raises ValueError: If ``OPENROUTESERVICE_BASE_URL`` is not set
     """
-    base_url = os.environ.get("BASE_URL")
+    base_url = ors_base_url()
     if not base_url:
         raise ValueError(
-            "BASE_URL is not set. Set it to the URL of an OpenRouteService server."
+            "OPENROUTESERVICE_BASE_URL is not set. Set it to the URL of an OpenRouteService server."
         )
     api_key = os.environ.get("OPENROUTESERVICE_API_KEY")
     if api_key is None:
@@ -165,10 +189,10 @@ async def deadhead_cost(
     :return: A dictionary with the distance, the duration and a GeoJSON LineString of the route taken between
     """
 
-    base_url = os.environ["BASE_URL"]
+    base_url = ors_base_url()
     new_url = _ors_directions_url(profile, service)
     if base_url is None:
-        raise ValueError("BASE_URL is not set")
+        raise ValueError("OPENROUTESERVICE_BASE_URL is not set")
 
     coords = (point_start, point_end, point_depot)
 

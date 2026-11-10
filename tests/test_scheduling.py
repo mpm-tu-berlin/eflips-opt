@@ -455,7 +455,7 @@ class TestEdgeDeltaSoc:
 
 class TestNearbyDepartures:
     """Graphs with departures from nearby stops, on the one-day database (deadheads from the dummy ORS of conftest.py,
-    unless BASE_URL is set)."""
+    unless OPENROUTESERVICE_BASE_URL is set)."""
 
     @pytest.fixture(scope="class")
     def session(self):
@@ -666,9 +666,10 @@ class TestNearbyDepartures:
         assert len(calls) == len(set(calls))
 
     def test_needs_base_url(self, trip_list, monkeypatch):
-        """The default router needs BASE_URL."""
-        monkeypatch.delenv("BASE_URL")
-        with pytest.raises(ValueError, match="BASE_URL"):
+        """The default router needs OPENROUTESERVICE_BASE_URL."""
+        monkeypatch.delenv("OPENROUTESERVICE_BASE_URL")
+        monkeypatch.delenv("BASE_URL", raising=False)
+        with pytest.raises(ValueError, match="OPENROUTESERVICE_BASE_URL"):
             create_graph(trip_list)
 
     def test_write_back(self, session, trip_list):
